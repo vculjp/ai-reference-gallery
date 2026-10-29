@@ -200,6 +200,135 @@ async function main() {
   assert.equal(adaptiveCanvas[3],adaptiveCanvas[1]*2);
   assert.ok(adaptiveCanvas[4][0] > adaptiveCanvas[4][2]);
   assert.ok(adaptiveCanvas[5][2] > adaptiveCanvas[5][0]);
+  // Four / nine grid: real UI switching, unique selections and per-cell reroll.
+  await evalJs("document.querySelector('#compose-mode-four').click()");
+  assert.equal(await evalJs("document.querySelector('#compose-workbench').hidden"), true);
+  assert.equal(await evalJs("document.querySelector('#compose-grid-panel').hidden"), false);
+  assert.equal(await evalJs("state.composition.gridItems.length"), 4);
+  assert.equal(await evalJs("new Set(state.composition.gridItems.map(x=>x.pose.pose_key)).size"), 4);
+  assert.equal(await evalJs("new Set(state.composition.gridItems.map(x=>x.outfit.id)).size"), 4);
+  assert.equal(await evalJs("document.querySelectorAll('.compose-grid-tile').length"), 4);
+  assert.equal(await evalJs("document.querySelectorAll('.compose-grid-tile img').length"), 8);
+  assert.equal(await evalJs("document.querySelectorAll('.compose-grid-tile-code').length"), 8);
+  assert.equal(await evalJs("document.querySelector('#compose-grid-preview').disabled"), false);
+  const firstGrid = await evalJs("state.composition.gridItems.map(x=>[x.pose.pose_key,x.outfit.id])");
+  await evalJs("document.querySelector('.compose-grid-tile').click()");
+  assert.notDeepEqual(await evalJs("[state.composition.gridItems[0].pose.pose_key,state.composition.gridItems[0].outfit.id]"), firstGrid[0]);
+  assert.notEqual(await evalJs("state.composition.gridItems[0].pose.pose_key"), firstGrid[0][0]);
+  assert.notEqual(await evalJs("state.composition.gridItems[0].outfit.id"), firstGrid[0][1]);
+  assert.deepEqual(await evalJs("state.composition.gridItems.slice(1).map(x=>[x.pose.pose_key,x.outfit.id])"), firstGrid.slice(1));
+  assert.equal(await evalJs("new Set(state.composition.gridItems.map(x=>x.pose.pose_key)).size"), 4);
+  assert.equal(await evalJs("new Set(state.composition.gridItems.map(x=>x.outfit.id)).size"), 4);
+  await evalJs("document.querySelector('#compose-grid-shuffle').click()");
+  assert.equal(await evalJs("new Set(state.composition.gridItems.map(x=>x.pose.pose_key)).size"), 4);
+  assert.equal(await evalJs("new Set(state.composition.gridItems.map(x=>x.outfit.id)).size"), 4);
+  await evalJs("document.querySelector('#compose-mode-nine').click()");
+  assert.equal(await evalJs("document.querySelectorAll('.compose-grid-tile').length"), 9);
+  assert.equal(await evalJs("document.querySelectorAll('.compose-grid-tile img').length"), 18);
+  assert.equal(await evalJs("new Set(state.composition.gridItems.map(x=>x.pose.pose_key)).size"), 9);
+  assert.equal(await evalJs("new Set(state.composition.gridItems.map(x=>x.outfit.id)).size"), 9);
+  const priorNine = await evalJs("state.composition.gridItems.map(x=>[x.pose.pose_key,x.outfit.id])");
+  await evalJs("document.querySelector('#compose-grid-shuffle').click()");
+  assert.equal(await evalJs(`state.composition.gridItems.every(x=>
+    !${JSON.stringify(priorNine)}.some(previous=>previous[0]===x.pose.pose_key || previous[1]===x.outfit.id))`),true,
+    "A full reroll should avoid prior pose groups and outfits when enough alternatives exist");
+  await evalJs("document.querySelector('#compose-random-outfit-filter').value='spring';document.querySelector('#compose-random-outfit-filter').dispatchEvent(new Event('change'))");
+  assert.equal(await evalJs("state.composition.gridItems.every(x=>x.outfit.category==='spring')"),true);
+  assert.equal(await evalJs("new Set(state.composition.gridItems.map(x=>x.pose.pose_key)).size"),9);
+  assert.equal(await evalJs("new Set(state.composition.gridItems.map(x=>x.outfit.id)).size"),9);
+  await evalJs("document.querySelector('#compose-random-outfit-filter').value='';document.querySelector('#compose-random-outfit-filter').dispatchEvent(new Event('change'))");
+  assert.equal(await evalJs("new Set(state.composition.gridItems.map(x=>x.pose.pose_key)).size"), 9);
+  assert.equal(await evalJs("state.composition.gridItems.every(x=>x.pose.series!=='2人絡み')"), true);
+  const scarceCategory = await evalJs(`(()=>{
+    const categories=[...document.querySelector('#compose-random-pose-filter').options].map(x=>x.value).filter(Boolean);
+    return categories.find(category=>{
+      const keys=new Set(state.poseImages.filter(x=>x.category===category&&x.series!=='2人絡み').map(x=>x.pose_key));
+      return keys.size>0&&keys.size<9;
+    }) || null;
+  })()`);
+  if(scarceCategory){
+    await evalJs(`document.querySelector('#compose-random-pose-filter').value=${JSON.stringify(scarceCategory)};
+      document.querySelector('#compose-random-pose-filter').dispatchEvent(new Event('change'))`);
+    assert.equal(await evalJs("state.composition.gridItems.length"),0);
+    assert.equal(await evalJs("document.querySelector('#compose-grid-download').disabled"),true);
+    assert.match(await evalJs("document.querySelector('#compose-grid-status').textContent"),/各至少 9/);
+    await evalJs("document.querySelector('#compose-random-pose-filter').value='';document.querySelector('#compose-random-pose-filter').dispatchEvent(new Event('change'))");
+    assert.equal(await evalJs("new Set(state.composition.gridItems.map(x=>x.pose.pose_key)).size"),9);
+  }
+  await evalJs("document.querySelector('#compose-grid-labels').click()");
+  assert.equal(await evalJs("document.querySelectorAll('.compose-grid-tile-code').length"), 0);
+  await evalJs("document.querySelector('#compose-grid-labels').click()");
+  assert.equal(await evalJs("document.querySelectorAll('.compose-grid-tile-code').length"), 18);
+  await evalJs("document.querySelector('#compose-grid-preview').click()");
+  for (let i = 0; i < 25 && !(await evalJs("document.querySelector('#compose-placeholder').hidden")); i++) await sleep(150);
+  assert.equal(await evalJs("document.querySelector('#compose-canvas').width"), 1080);
+  assert.equal(await evalJs("document.querySelector('#compose-canvas').height"), 1080);
+  assert.equal(await evalJs("document.querySelector('#compose-preview-size').textContent"), "3072 × 3072 PNG");
+  await evalJs("document.querySelector('#compose-preview-close').click()");
+  assert.equal(await evalJs("document.activeElement.id"), "compose-grid-preview");
+  const gridPixels = await evalJs(`(async()=>{
+    const colors=['#ed3131','#33bb44','#315cf0','#eeaf11','#ad44bd','#13b9b9',
+      '#444444','#ee77a9','#805533','#ee6500','#26aa99','#9b11f0',
+      '#fa2555','#157bdd','#aecc33','#007744','#f07700','#6644a8'];
+    const urls=[];
+    try {
+      for(const color of colors){
+        const image=document.createElement('canvas');image.width=100;image.height=150;
+        const ctx=image.getContext('2d');ctx.fillStyle=color;ctx.fillRect(0,0,100,150);
+        const blob=await new Promise(resolve=>image.toBlob(resolve,'image/png'));
+        urls.push(URL.createObjectURL(blob));
+      }
+      const entries=urls.map((uploadUrl,i)=>({id:'GRID-'+i,uploadUrl}));
+      const pairs=Array.from({length:9},(_,i)=>({pose:entries[i*2],outfit:entries[i*2+1]}));
+      const four=document.createElement('canvas');
+      await ReferenceComposition.draw(four,{mode:'four',items:pairs.slice(0,4),background:'white',labels:false});
+      const originalText=CanvasRenderingContext2D.prototype.fillText;
+      const paintedCodes=[];
+      CanvasRenderingContext2D.prototype.fillText=function(code,...args){
+        paintedCodes.push(String(code));
+        return originalText.call(this,code,...args);
+      };
+      try {
+        const catalogPairs=pairs.slice(0,4).map(({pose,outfit})=>({
+          pose:{id:pose.id,original:pose.uploadUrl},
+          outfit:{id:outfit.id,original:outfit.uploadUrl}
+        }));
+        await ReferenceComposition.draw(document.createElement('canvas'),
+          {mode:'four',items:catalogPairs,background:'white',labels:true});
+      } finally { CanvasRenderingContext2D.prototype.fillText=originalText; }
+      const nine=document.createElement('canvas');
+      await ReferenceComposition.draw(nine,{mode:'nine',items:pairs,background:'soft',labels:false});
+      const fourBlob=await ReferenceComposition.exportPNG({mode:'four',items:pairs.slice(0,4),background:'white',labels:false});
+      const fourBitmap=await createImageBitmap(fourBlob);
+      const exported=await ReferenceComposition.exportPNG({mode:'nine',items:pairs,background:'soft',labels:false});
+      const actual=await createImageBitmap(exported);
+      const ctx=nine.getContext('2d');
+      const pixels=[];
+      for(let i=0;i<9;i++){
+        const y=Math.floor((Math.floor(i/3)+.5)*nine.height/3);
+        for(const side of [.25,.75]){
+          const x=Math.floor((i%3+side)*nine.width/3);
+          pixels.push(Array.from(ctx.getImageData(x,y,1,1).data).slice(0,3));
+        }
+      }
+      const expected=colors.map(code=>[1,3,5].map(j=>parseInt(code.slice(j,j+2),16)));
+      const result=[four.width,four.height,nine.width,nine.height,actual.width,actual.height,
+        exported.size,pixels,fourBitmap.width,fourBitmap.height,expected,paintedCodes];
+      actual.close();
+      fourBitmap.close();
+      return result;
+    } finally {urls.forEach(url=>URL.revokeObjectURL(url));}
+  })()`);
+  assert.deepEqual(gridPixels.slice(0,6), [720,720,1080,1080,3072,3072]);
+  assert.deepEqual(gridPixels.slice(8,10),[2048,2048]);
+  assert.ok(gridPixels[6]>10000);
+  assert.deepEqual(gridPixels[7],gridPixels[10],
+    "Each cell must show its specific pose on the left and outfit on the right");
+  assert.deepEqual(gridPixels[11],Array.from({length:8},(_,i)=>'GRID-'+i),
+    "Each paired grid cell must render both image IDs in pose/outfit order");
+  await evalJs("document.querySelector('#compose-mode-reference').click()");
+  assert.equal(await evalJs("document.querySelector('#compose-grid-panel').hidden"), true);
+  assert.equal(await evalJs("document.querySelector('#compose-workbench').hidden"), false);
   // Optional person reference: validate fixed left-to-right role order,
   // prompt positions, removal and double-image fallback.
   const threeImages = await evalJs(`(async()=>{
@@ -441,6 +570,13 @@ async function main() {
   await evalJs("document.querySelector('.card').click();document.querySelector('#add-to-compose').click()");
   assert.equal(await evalJs("document.querySelector('#compose-panel').hidden"), false);
   assert.equal(await evalJs("document.documentElement.scrollWidth <= window.innerWidth"), true);
+  await evalJs("document.querySelector('#compose-mode-four').click()");
+  assert.equal(await evalJs("document.documentElement.scrollWidth <= window.innerWidth"),true);
+  assert.equal(await evalJs("document.querySelectorAll('.compose-grid-tile').length"),4);
+  await evalJs("document.querySelector('#compose-mode-nine').click()");
+  assert.equal(await evalJs("document.documentElement.scrollWidth <= window.innerWidth"),true);
+  assert.equal(await evalJs("document.querySelectorAll('.compose-grid-tile').length"),9);
+  await evalJs("document.querySelector('#compose-mode-reference').click()");
   assert.equal(await evalJs("document.querySelector('#compose-download').disabled"), false);
   assert.equal(await evalJs("document.querySelector('#compose-preview-overlay').hidden"), true);
   assert.equal(await evalJs("document.querySelector('#compose-open-preview').disabled"), false);
@@ -500,7 +636,38 @@ async function main() {
       await evalJs("ReferenceGalleryI18n.t('composeSaved')"));
     await evalJs("document.querySelector('#compose-preview-close').click()");
     assert.equal(await evalJs("document.querySelector('#compose-preview-overlay').hidden"), true);
-    console.log("PASS: HTTP same-origin gallery downloads adaptive portrait PNG without image-folder authorization");
+    await evalJs("document.querySelector('#compose-mode-nine').click()");
+    assert.equal(await evalJs("state.composition.gridItems.length"), 9);
+    assert.equal(await evalJs("new Set(state.composition.gridItems.map(x=>x.pose.pose_key)).size"), 9);
+    assert.equal(await evalJs("new Set(state.composition.gridItems.map(x=>x.outfit.id)).size"), 9);
+    assert.equal(await evalJs("document.querySelectorAll('.compose-grid-tile img').length"), 18);
+    assert.equal(await evalJs("document.querySelector('#compose-grid-download').disabled"), false);
+    const gridClipboard = await evalJs(`(async()=>{
+      let blob;
+      Object.defineProperty(navigator,'clipboard',{configurable:true,value:{
+        write:async items=>{blob=await items[0].getType('image/png')},
+        writeText:async()=>{}
+      }});
+      await document.querySelector('#compose-grid-copy').onclick();
+      const image=await createImageBitmap(blob);
+      const dimensions=[image.width,image.height,blob.size];
+      image.close();
+      return dimensions;
+    })()`);
+    assert.deepEqual(gridClipboard.slice(0,2),[3072,3072]);
+    assert.ok(gridClipboard[2]>10000);
+    await evalJs("document.querySelector('#compose-grid-download').click()");
+    let gridFile;
+    for (let i=0;i<120;i++){
+      gridFile=fs.readdirSync(profile).find(name=>name.startsWith('9grid_')&&name.endsWith('.png'));
+      if(gridFile)break;
+      await sleep(150);
+    }
+    assert.ok(gridFile,"Nine pose+outfit grid must download a PNG with no folder authorization online");
+    const gridBytes=fs.readFileSync(path.join(profile,gridFile));
+    assert.equal(gridBytes.readUInt32BE(16),3072);
+    assert.equal(gridBytes.readUInt32BE(20),3072);
+    console.log("PASS: HTTP reference + nine-grid copy/download PNG, no folder authorization");
     ws.close();
     return;
   }

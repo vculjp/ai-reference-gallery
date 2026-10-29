@@ -1,5 +1,5 @@
 "use strict";
-// Offline-capable two/three-image reference compositor. No dependencies, network APIs, or server.
+// Offline-capable reference and pose/outfit grid compositor. No external dependencies.
 window.ReferenceComposition = (() => {
   let directory = null;
   let pickedFiles = null;
@@ -155,16 +155,85 @@ window.ReferenceComposition = (() => {
     return [w, h];
   }
 
-  async function draw(canvas, options, original = false) {
-    if (!options.pose || !options.second) throw new Error("COMPOSITION_INCOMPLETE");
+  function paintGrid(canvas, options, images, original) {
+    const count = options.mode === "nine" ? 9 : 4;
+    const columns = count === 9 ? 3 : 2;
+    if (images.length !== count) throw new Error("COMPOSITION_INCOMPLETE");
+    const edge = columns * (original ? 1024 : 360);
+    canvas.width = canvas.height = edge;
+    const ctx = canvas.getContext("2d");
+    const margin = Math.round(edge * .016);
+    const gap = Math.round(edge * .009);
+    const cell = (edge - margin * 2 - gap * (columns - 1)) / columns;
+    const innerPad = Math.max(5, Math.round(edge * .005));
+    const pairGap = Math.max(3, Math.round(cell * .012));
+    const panelWidth = (cell - innerPad * 2 - pairGap) / 2;
+    const labelH = options.labels ? Math.round(cell * .075) : 0;
+    ctx.fillStyle = options.background === "soft" ? "#f2f3f6" : "#ffffff";
+    ctx.fillRect(0, 0, edge, edge);
+    images.forEach(({pose, outfit}, index) => {
+      const x = margin + (index % columns) * (cell + gap);
+      const y = margin + Math.floor(index / columns) * (cell + gap);
+      ctx.fillStyle = options.background === "soft" ? "#fff" : "#f7f8fa";
+      ctx.fillRect(x, y, cell, cell);
+      const pair = options.items[index];
+      [[pose, pair.pose], [outfit, pair.outfit]].forEach(([image, entry], side) => {
+        const px = x + innerPad + side * (panelWidth + pairGap);
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(px, y + innerPad, panelWidth, cell - innerPad * 2);
+        contain(ctx, image, px + 2, y + innerPad + 2,
+          panelWidth - 4, cell - innerPad * 2 - labelH - 4);
+        if (options.labels && entry.id && !entry.uploadUrl) {
+          ctx.fillStyle = "#333d4e";
+          ctx.font = `650 ${Math.max(12, Math.round(panelWidth * .075))}px system-ui, sans-serif`;
+          ctx.textBaseline = "middle";
+          ctx.fillText(String(entry.id).slice(0, 40), px + 5,
+            y + cell - innerPad - labelH / 2, panelWidth - 10);
+        }
+      });
+    });
+    return [edge, edge];
+  }
+
+  // Load a few originals at once: 9-grid needs 18 images, but loading them
+  // strictly one by one is slow. Always revoke acquired blob URLs on failure.
+  async function withImages(entries, original, render) {
     const sources = [];
     try {
-      sources.push(await loadSource(options.pose, original));
-      sources.push(await loadSource(options.second, original));
-      if (options.person) sources.push(await loadSource(options.person, original));
-      return paint(canvas, options, sources.map((s) => s.image), original);
+      for (let index = 0; index < entries.length; index += 4) {
+        const batch = await Promise.allSettled(
+          entries.slice(index, index + 4).map((entry) => loadSource(entry, original))
+        );
+        sources.push(...batch.filter((item) => item.status === "fulfilled")
+          .map((item) => item.value));
+        const failure = batch.find((item) => item.status === "rejected");
+        if (failure) throw failure.reason;
+      }
+      return render(sources.map((source) => source.image));
+    } finally {
+      for (const source of sources) if (source.url) URL.revokeObjectURL(source.url);
     }
-    finally { for (const source of sources) if (source.url) URL.revokeObjectURL(source.url); }
+  }
+
+  async function draw(canvas, options, original = false) {
+    if (options.mode === "four" || options.mode === "nine") {
+      const count = options.mode === "nine" ? 9 : 4;
+      if (options.items?.length !== count ||
+          options.items.some((entry) => !entry?.pose || !entry?.outfit)) {
+        throw new Error("COMPOSITION_INCOMPLETE");
+      }
+      const entries = options.items.flatMap(({pose, outfit}) => [pose, outfit]);
+      return withImages(entries, original, (images) => {
+        const pairs = options.items.map((_, i) => ({
+          pose: images[2 * i], outfit: images[2 * i + 1]
+        }));
+        return paintGrid(canvas, options, pairs, original);
+      });
+    }
+    if (!options.pose || !options.second) throw new Error("COMPOSITION_INCOMPLETE");
+    const entries = [options.pose, options.second];
+    if (options.person) entries.push(options.person);
+    return withImages(entries, original, (images) => paint(canvas, options, images, original));
   }
 
   async function exportPNG(options) {

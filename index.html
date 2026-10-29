@@ -85,6 +85,11 @@
     <div class="load-more-wrap"><button id="load-more" type="button" hidden>加载更多</button></div>
     </div>
     <section id="compose-panel" class="compose-panel" hidden aria-label="组合工作台">
+      <div class="compose-mode-tabs" role="group" aria-label="制作模式" id="compose-mode-tabs">
+        <button type="button" id="compose-mode-reference" class="active" aria-pressed="true">参考图组合</button>
+        <button type="button" id="compose-mode-four" aria-pressed="false">四宫格</button>
+        <button type="button" id="compose-mode-nine" aria-pressed="false">九宫格</button>
+      </div>
       <div class="compose-random-bar">
         <div class="compose-random-copy">
           <strong id="compose-random-title">试试随机搭配</strong>
@@ -111,7 +116,46 @@
         </label>
         <span id="compose-random-pool-size" class="compose-random-pool-size" aria-live="polite"></span>
       </div>
-      <div class="compose-workbench">
+      <div id="compose-local-notice" class="compose-local-notice" role="note" hidden>
+        <div class="compose-local-notice-icon" aria-hidden="true">!</div>
+        <div class="compose-local-notice-content">
+          <strong id="compose-local-title">本地下载或复制组合图片均需授权</strong>
+          <p id="compose-local-step">请选择本项目的 img 文件夹（包含 pose / costume）；线上使用无需授权。</p>
+        </div>
+        <button type="button" class="compose-folder-button" id="compose-folder-button">选择 img 文件夹</button>
+      </div>
+      <input type="file" id="compose-folder-input" webkitdirectory directory multiple hidden>
+      <div id="compose-grid-panel" class="compose-grid-panel" hidden>
+        <div class="compose-grid-controls">
+          <div class="compose-grid-intro">
+            <h3 id="compose-grid-heading">随机姿势 × 服饰搭配</h3>
+            <p id="compose-grid-hint">每格左边是姿势、右边是服饰；点击任意格同时更换这一组搭配。</p>
+          </div>
+          <button id="compose-grid-shuffle" class="compose-random-primary" type="button">重新随机全部</button>
+        </div>
+        <div class="compose-grid-body">
+          <div>
+            <div id="compose-grid-tiles" class="compose-grid-tiles" aria-label="随机姿势服饰搭配"></div>
+            <p class="compose-grid-status" id="compose-grid-status" role="status"></p>
+          </div>
+          <div class="compose-grid-sidebar">
+            <h3 id="compose-grid-settings-title">宫格设置</h3>
+            <div class="compose-grid-options">
+              <label><span id="compose-grid-bg-label">背景</span>
+                <select id="compose-grid-bg"><option id="compose-grid-white" value="white">白色</option><option id="compose-grid-soft" value="soft">浅灰</option></select>
+              </label>
+              <label class="compose-checkbox"><input id="compose-grid-labels" type="checkbox" checked><span id="compose-grid-labels-label">显示图片编号</span></label>
+            </div>
+            <p class="compose-grid-export-hint" id="compose-grid-export-hint">仅在预览时生成完整宫格；导出为高清方形 PNG。</p>
+            <div class="compose-grid-actions">
+              <button type="button" id="compose-grid-preview" class="compose-preview-button" disabled>大图预览</button>
+              <button type="button" id="compose-grid-copy" class="compose-secondary" disabled>复制宫格</button>
+              <button type="button" id="compose-grid-download" disabled>下载 PNG</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="compose-workbench" id="compose-workbench">
       <div class="compose-selection">
         <article class="compose-slot">
           <div class="compose-slot-head"><span id="compose-pose-label">01 · 姿势</span><span id="compose-pose-id"></span></div>
@@ -161,14 +205,6 @@
           </div>
           <input type="file" id="compose-person-input" accept="image/png,image/jpeg,image/webp" hidden>
         </div>
-        <div id="compose-local-notice" class="compose-local-notice" role="note" hidden>
-          <div class="compose-local-notice-icon" aria-hidden="true">!</div>
-          <div class="compose-local-notice-content">
-            <strong id="compose-local-title">本地下载或复制组合图片均需授权</strong>
-            <p id="compose-local-step">请选择本项目的 img 文件夹（包含 pose / costume）；线上使用无需授权。</p>
-          </div>
-          <button type="button" class="compose-folder-button" id="compose-folder-button">选择 img 文件夹</button>
-        </div>
         <div class="compose-tools">
           <label><span id="compose-bg-label">画布背景</span>
             <select id="compose-bg"><option value="white" id="compose-white">白色</option><option value="soft" id="compose-soft">浅灰</option></select>
@@ -184,7 +220,6 @@
           </div>
         </details>
         <p id="compose-help" class="compose-bottom-help">原图等比例完整保留，不裁切。所有操作均在浏览器本地完成。</p>
-        <input type="file" id="compose-folder-input" webkitdirectory directory multiple hidden>
       </div>
       </div>
     </section>

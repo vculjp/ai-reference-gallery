@@ -2,6 +2,7 @@
 // Composition UI controller. Canvas rendering and file access stay in composition.js.
 window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choosePose, chooseCostume, openComposition}) => {
   let previewVersion = 0;
+  let previewOpener = null;
   let poseGroupsSource = null;
   let poseGroups = [];
   let filters = { outfit: "", pose: "", duo: false };
@@ -68,6 +69,129 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     $("compose-random-include-duo").checked = filters.duo;
     updatePoolCount();
   }
+  const isGrid = () => ["four", "nine"].includes(state.composition.mode);
+  const gridCount = () => state.composition.mode === "nine" ? 9 : 4;
+  const randomAngle = (group) => group[Math.floor(Math.random() * group.length)];
+  const gridPool = () => ({ poses: eligiblePoseGroups(), outfits: eligibleOutfits() });
+  function shuffleList(items) {
+    const shuffled = [...items];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const k = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[k]] = [shuffled[k], shuffled[i]];
+    }
+    return shuffled;
+  }
+  function selectFresh(items, previous, key, count) {
+    const shuffled = shuffleList(items);
+    return [
+      ...shuffled.filter((item) => !previous.has(key(item))),
+      ...shuffled.filter((item) => previous.has(key(item)))
+    ].slice(0, count);
+  }
+  function setGridStatus(key, ...args) {
+    $("compose-grid-status").textContent = key ? t(key, ...args) : "";
+    $("compose-grid-status").dataset.status = key === "composeGridInsufficient" ? "error" : "";
+  }
+  function renderGridTiles() {
+    const list = $("compose-grid-tiles");
+    list.style.setProperty("--grid-count", state.composition.mode === "nine" ? 3 : 2);
+    const tiles = state.composition.gridItems.map(({pose, outfit}, index) => {
+      const tile = element("button", "compose-grid-tile");
+      tile.type = "button";
+      tile.title = t("composeGridReroll");
+      tile.setAttribute("aria-label", t("composeGridTileLabel", index + 1, pose.id, outfit.id));
+      for (const [entry, role] of [[pose, "pose"], [outfit, "outfit"]]) {
+        const half = element("span", "compose-grid-half compose-grid-" + role);
+        const img = element("img");
+        img.alt = entry.id;
+        img.loading = "lazy";
+        img.src = entry.thumbnail || entry.preview || entry.original;
+        half.append(img);
+        if (state.composition.gridLabels) {
+          half.append(element("span", "compose-grid-tile-code", entry.id));
+        }
+        tile.append(half);
+      }
+      tile.append(element("span", "compose-grid-tile-refresh", "↻"));
+      tile.onclick = () => rerollGridTile(index);
+      return tile;
+    });
+    list.replaceChildren(...tiles);
+    const complete = state.composition.gridItems.length === gridCount();
+    for (const id of ["compose-grid-preview", "compose-grid-copy", "compose-grid-download"]) {
+      $(id).disabled = !complete;
+    }
+    $("compose-grid-settings-title").textContent =
+      t("composeGridSettings", state.composition.mode === "nine" ? 9 : 4);
+    if (!$("compose-preview-overlay").hidden && isGrid()) void renderPreview();
+  }
+  function shuffleGrid() {
+    const count = gridCount();
+    const {poses, outfits} = gridPool();
+    if (poses.length < count || outfits.length < count) {
+      state.composition.gridItems = [];
+      renderGridTiles();
+      setGridStatus("composeGridInsufficient", poses.length, outfits.length, count);
+      return;
+    }
+    // Shuffle the pose groups and outfit IDs independently. Both dimensions
+    // remain unique, even if there are multiple camera angles for one pose.
+    const usedPoses = new Set(state.composition.gridItems.map((pair) => pair.pose.pose_key));
+    const usedOutfits = new Set(state.composition.gridItems.map((pair) => pair.outfit.id));
+    const orderedPoses = selectFresh(poses, usedPoses, (group) => group[0].pose_key, count);
+    const orderedOutfits = selectFresh(outfits, usedOutfits, (item) => item.id, count);
+    state.composition.gridItems = orderedPoses.map((group, i) => ({
+      pose: randomAngle(group), outfit: orderedOutfits[i]
+    }));
+    renderGridTiles();
+    setGridStatus("composeGridGenerated", count);
+  }
+  function rerollGridTile(index) {
+    const {poses, outfits} = gridPool();
+    const current = state.composition.gridItems[index];
+    if (!current) return;
+    const usedPoses = new Set(state.composition.gridItems
+      .filter((_, i) => i !== index).map((pair) => pair.pose.pose_key));
+    const usedOutfits = new Set(state.composition.gridItems
+      .filter((_, i) => i !== index).map((pair) => pair.outfit.id));
+    const poseChoices = poses.filter((group) =>
+      !usedPoses.has(group[0].pose_key) && group[0].pose_key !== current.pose.pose_key);
+    const outfitChoices = outfits.filter((item) =>
+      !usedOutfits.has(item.id) && item.id !== current.outfit.id);
+    if (!poseChoices.length || !outfitChoices.length) {
+      setGridStatus("composeGridNoAlternative");
+      return;
+    }
+    state.composition.gridItems[index] = {
+      pose: randomAngle(poseChoices[Math.floor(Math.random() * poseChoices.length)]),
+      outfit: outfitChoices[Math.floor(Math.random() * outfitChoices.length)]
+    };
+    renderGridTiles();
+    setGridStatus("composeGridTileUpdated", index + 1);
+  }
+  function setMode(mode) {
+    state.composition.mode = mode;
+    for (const item of ["reference", "four", "nine"]) {
+      const button = $("compose-mode-" + item);
+      button.classList.toggle("active", mode === item);
+      button.setAttribute("aria-pressed", String(mode === item));
+    }
+    $("compose-workbench").hidden = isGrid();
+    $("compose-grid-panel").hidden = !isGrid();
+    document.querySelector(".compose-random-bar").hidden = isGrid();
+    if (isGrid()) {
+      const {poses, outfits} = gridPool();
+      const allowedPoses = new Set(poses.map((group) => group[0].pose_key));
+      const allowedOutfits = new Set(outfits.map((item) => item.id));
+      if (state.composition.gridItems.length !== gridCount() ||
+          state.composition.gridItems.some(({pose, outfit}) =>
+            !allowedPoses.has(pose.pose_key) || !allowedOutfits.has(outfit.id))) {
+        shuffleGrid();
+      }
+      else renderGridTiles();
+    } else if (!$("compose-preview-overlay").hidden) void renderPreview();
+    syncComposeFolderNotice();
+  }
   // The composition module owns its own controls and translations; the gallery
   // controller only needs to refresh them when the selected language changes.
   function refreshLabels() {
@@ -96,12 +220,24 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
       "compose-soft": "composeSoft", "compose-labels-label": "composeLabels",
       "compose-help": "composeHelp",
       "compose-download": "composeDownload", "compose-folder-button": "composeFolder",
-      "compose-local-title": "composeLocalTitle", "compose-local-step": "composeLocalStep"
+      "compose-local-title": "composeLocalTitle", "compose-local-step": "composeLocalStep",
+      "compose-mode-reference": "composeModeReference",
+      "compose-mode-four": "composeModeFour", "compose-mode-nine": "composeModeNine",
+      "compose-grid-heading": "composeGridHeading", "compose-grid-hint": "composeGridHint",
+      "compose-grid-shuffle": "composeGridShuffle",
+      "compose-grid-bg-label": "composeBg", "compose-grid-white": "composeWhite",
+      "compose-grid-soft": "composeSoft", "compose-grid-labels-label": "composeLabels",
+      "compose-grid-export-hint": "composeGridExportHint",
+      "compose-grid-preview": "composeOpenPreview",
+      "compose-grid-copy": "composeGridCopy", "compose-grid-download": "composeDownload"
     };
     for (const [id, key] of Object.entries(keys)) $(id).textContent = t(key);
     $("compose-preview-close").setAttribute("aria-label", t("close"));
     $("compose-random-filters").setAttribute("aria-label", t("composeRandomTitle"));
+    $("compose-mode-tabs").setAttribute("aria-label", t("composeModeLabel"));
+    $("compose-grid-tiles").setAttribute("aria-label", t("composeGridHeading"));
     refreshRandomFilters();
+    if (isGrid()) renderGridTiles();
   }
   function drawRandomPose() {
     const group = pickDifferent(eligiblePoseGroups(), state.composition.pose?.pose_key,
@@ -133,13 +269,29 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
   function releaseUploadedImage() { releaseUpload("second"); }
   function releaseUploadedPerson() { releaseUpload("person"); }
   function compositionOptions() {
-    return { ...state.composition };
+    if (isGrid()) return {
+      mode: state.composition.mode,
+      items: state.composition.gridItems.map(({pose, outfit}) => ({pose, outfit})),
+      background: state.composition.gridBackground,
+      labels: state.composition.gridLabels
+    };
+    return { ...state.composition, mode: "reference" };
   }
+  const activeEntries = () => isGrid()
+    ? state.composition.gridItems.flatMap(({pose, outfit}) => [pose, outfit])
+    : [state.composition.pose, state.composition.second, state.composition.person].filter(Boolean);
+  const hasCompleteSelection = () => isGrid()
+    ? state.composition.gridItems.length === gridCount()
+    : !!state.composition.pose && !!state.composition.second;
   function setStatus(id, key, error = false) {
     const message = key ? t(key) : "";
     const status = error ? "error" : "";
     $(id).textContent = message;
     $(id).dataset.status = status;
+    if (isGrid()) {
+      $("compose-grid-status").textContent = message;
+      $("compose-grid-status").dataset.status = status;
+    }
     if (!$("compose-preview-overlay").hidden) {
       $("compose-preview-action-status").textContent = message;
       $("compose-preview-action-status").dataset.status = status;
@@ -174,7 +326,7 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     $("compose-preview-overlay").hidden = true;
     ++previewVersion;
     document.body.style.overflow = "";
-    $("compose-open-preview").focus();
+    (previewOpener || $("compose-open-preview")).focus();
   }
   function fitPreviewToViewport(width, height) {
     if ($("compose-preview-overlay").hidden) return;
@@ -204,7 +356,9 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
       canvas.width = buffer.width;
       canvas.height = buffer.height;
       canvas.getContext("2d").drawImage(buffer, 0, 0);
-      const sizeText = `${buffer.width * 2} × ${buffer.height * 2} PNG`;
+      const sizeText = isGrid()
+        ? `${state.composition.mode === "nine" ? 3072 : 2048} × ${state.composition.mode === "nine" ? 3072 : 2048} PNG`
+        : `${buffer.width * 2} × ${buffer.height * 2} PNG`;
       $("compose-size").textContent = sizeText;
       $("compose-preview-size").textContent = sizeText;
       fitPreviewToViewport(buffer.width, buffer.height);
@@ -215,7 +369,10 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     }
   }
   function openPreview() {
-    if (!state.composition.pose || !state.composition.second) return;
+    if (!hasCompleteSelection()) return;
+    previewOpener = document.activeElement instanceof HTMLButtonElement &&
+      document.activeElement.closest("#compose-panel")
+      ? document.activeElement : $(isGrid() ? "compose-grid-preview" : "compose-open-preview");
     $("compose-preview-overlay").hidden = false;
     $("compose-preview-dialog").style.width = "";
     $("compose-preview-stage").style.aspectRatio = "";
@@ -238,9 +395,9 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     }
   }
   async function copyMergedImage() {
-    if (!state.composition.pose || !state.composition.second) return;
+    if (!hasCompleteSelection()) return;
     if (composition.needsFolder() && !(await chooseLocalFolder())) return;
-    const buttons = [$("compose-copy-image"), $("compose-preview-copy")];
+    const buttons = [$("compose-copy-image"), $("compose-grid-copy"), $("compose-preview-copy")];
     buttons.forEach((button) => { button.disabled = true; });
     try {
       if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
@@ -258,11 +415,13 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
         setCopyStatus("composeCopyImageError", true);
       }
     } finally {
-      buttons.forEach((button) => { button.disabled = !(state.composition.pose && state.composition.second); });
+      buttons.forEach((button) => { button.disabled = !hasCompleteSelection(); });
     }
   }
   function updateComposition(animate = []) {
-    const options = compositionOptions();
+    // Reference selection survives switching to a four/nine grid, including
+    // language changes made while the grid panel is active.
+    const options = state.composition;
     syncComposeFolderNotice();
     for (const [key, image] of [["pose", options.pose], ["costume", options.second]]) {
       const panel = $(key === "pose" ? "compose-pose-preview" : "compose-costume-preview");
@@ -307,7 +466,7 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     if (!force && !composition.needsFolder()) return true;
     try {
       if (await composition.requestFolder()) {
-        await composition.checkLocalAccess([state.composition.pose, state.composition.second]);
+        await composition.checkLocalAccess(activeEntries());
         syncComposeFolderNotice();
         setComposeStatus("composeFolderReady");
         return true;
@@ -324,15 +483,18 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     return false;
   }
   async function downloadComposition() {
-    if (!state.composition.pose || !state.composition.second) return;
+    if (!hasCompleteSelection()) return;
     if (composition.needsFolder() && !(await chooseLocalFolder())) return;
     $("compose-download").disabled = true;
+    $("compose-grid-download").disabled = true;
     $("compose-preview-download").disabled = true;
     setComposeStatus("composeExporting");
     try {
       const blob = await composition.exportPNG(compositionOptions());
-      const name = [state.composition.pose.id, state.composition.second.id]
-        .map((s) => String(s).replace(/[^\w.-]/g, "_").slice(0, 48)).join("_") + ".png";
+      const name = isGrid()
+        ? `${state.composition.mode === "nine" ? "9" : "4"}grid_pose_outfit.png`
+        : [state.composition.pose.id, state.composition.second.id]
+          .map((s) => String(s).replace(/[^\w.-]/g, "_").slice(0, 48)).join("_") + ".png";
       const href = URL.createObjectURL(blob);
       const link = element("a");
       link.href = href; link.download = name; document.body.append(link);
@@ -349,8 +511,9 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
           ? "composeOnlineImageError" : "composeExportError");
       }
     } finally {
-      const complete = !!state.composition.pose && !!state.composition.second;
+      const complete = hasCompleteSelection();
       $("compose-download").disabled = !complete;
+      $("compose-grid-download").disabled = !complete;
       $("compose-preview-download").disabled = !complete;
     }
   }
@@ -391,6 +554,21 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     updateComposition();
   }
   function bind() {
+    for (const mode of ["reference", "four", "nine"]) {
+      $("compose-mode-" + mode).onclick = () => setMode(mode);
+    }
+    $("compose-grid-shuffle").onclick = shuffleGrid;
+    $("compose-grid-bg").onchange = (event) => {
+      state.composition.gridBackground = event.target.value;
+      if (!$("compose-preview-overlay").hidden) void renderPreview();
+    };
+    $("compose-grid-labels").onchange = (event) => {
+      state.composition.gridLabels = event.target.checked;
+      renderGridTiles();
+    };
+    $("compose-grid-preview").onclick = openPreview;
+    $("compose-grid-copy").onclick = copyMergedImage;
+    $("compose-grid-download").onclick = downloadComposition;
     $("compose-open-preview").onclick = openPreview;
     $("compose-preview-close").onclick = closePreview;
     $("compose-preview-copy").onclick = copyMergedImage;
@@ -429,14 +607,17 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     $("compose-random-outfit-filter").onchange = (event) => {
       filters.outfit = event.target.value;
       updatePoolCount();
+      if (isGrid()) shuffleGrid();
     };
     $("compose-random-pose-filter").onchange = (event) => {
       filters.pose = event.target.value;
       updatePoolCount();
+      if (isGrid()) shuffleGrid();
     };
     $("compose-random-include-duo").onchange = (event) => {
       filters.duo = event.target.checked;
       refreshRandomFilters();
+      if (isGrid()) shuffleGrid();
     };
     $("compose-copy-prompt").onclick = copyPrompt;
     $("compose-copy-image").onclick = copyMergedImage;
@@ -448,7 +629,7 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     $("compose-folder-button").onclick = () => chooseLocalFolder(true);
     $("compose-folder-input").onchange = (event) => {
       const count = composition.setFiles(event.target.files);
-      composition.checkLocalAccess([state.composition.pose, state.composition.second])
+      composition.checkLocalAccess(activeEntries())
         .then(() => {
           if (!count) composition.clearFiles();
           syncComposeFolderNotice();

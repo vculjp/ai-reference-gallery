@@ -7,7 +7,11 @@ const state = {
   type: "pose", poseImages: [], costumeImages: [], images: [], records: [], cards: [],
   series: "", category: "", angle: "", search: "", view: "pose",
   visibleCount: 60, current: -1, selected: null,
-  composition: { pose: null, second: null, person: null, background: "white", labels: true }
+  composition: {
+    pose: null, second: null, person: null, background: "white", labels: true,
+    mode: "reference", gridItems: [],
+    gridBackground: "white", gridLabels: true
+  }
 };
 function uniq(arr) { return [...new Set(arr)]; }
 function element(tag, className, text) {

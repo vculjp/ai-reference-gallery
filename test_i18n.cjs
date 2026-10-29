@@ -142,6 +142,28 @@ test("composition uses fixed order and only actual gallery IDs", () => {
   assert.ok(!composer.includes('"UPLOAD"'));
 });
 
+test("four-grid and nine-grid use unique catalog references and fixed square layouts", () => {
+  const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  const core = fs.readFileSync(path.join(root, "composition.js"), "utf8");
+  const ui = fs.readFileSync(path.join(root, "composition-ui.js"), "utf8");
+  for (const id of [
+    "compose-mode-reference", "compose-mode-four", "compose-mode-nine",
+    "compose-grid-shuffle", "compose-grid-tiles",
+    "compose-grid-preview", "compose-grid-copy", "compose-grid-download"
+  ]) assert.ok(html.includes(`id="${id}"`), `Missing grid control ${id}`);
+  assert.ok(!html.includes('id="compose-grid-source"'), "Grid must combine pose and outfit, not use a single-source selector");
+  assert.match(core, /function paintGrid\(/);
+  assert.ok(core.includes("original ? 1024 : 360"));
+  assert.ok(ui.includes("usedPoses"));
+  assert.ok(ui.includes("usedOutfits"));
+  assert.ok(ui.includes("pose: randomAngle"));
+  assert.ok(ui.includes("outfit:"));
+  assert.match(core, /items\.flatMap\(\(\{pose, outfit\}\) => \[pose, outfit\]\)/,
+    "Grid loading must include both pose and outfit for every cell");
+  assert.match(core, /function withImages\(/, "Originals should share the bounded image loader");
+  assert.ok(ui.includes('setGridStatus("composeGridInsufficient"'));
+});
+
 test("footer credits the original creator and maintainer in all three languages", () => {
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
   assert.match(html, /id="footer-note">ai-reference-gallery · 图片与原始数据版权归原作者ギア所有 · 该版本由 vculjp 整理维护/);
