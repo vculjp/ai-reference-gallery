@@ -6,17 +6,33 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { spawnSync } = require("node:child_process");
+const http = require("node:http");
+const { spawn, spawnSync } = require("node:child_process");
 const { catalogs, findAssets, selectCompositions, promptFor, gridPrompt } =
   require("../.agents/skills/ai-reference-gallery/scripts/gallery.cjs");
 const { browserExecutable } =
   require("../.agents/skills/ai-reference-gallery/scripts/render.cjs");
 const root = path.resolve(__dirname, "..");
 const cli = path.join(root, ".agents/skills/ai-reference-gallery/scripts/gallery.cjs");
+const testCache = fs.mkdtempSync(path.join(os.tmpdir(), "ai-reference-cache-test-"));
+process.on("exit", () => fs.rmSync(testCache, { recursive: true, force: true }));
+
+function seedCache(pairs) {
+  for (const pair of pairs) {
+    for (const entry of [pair.pose, pair.outfit]) {
+      if (!entry) continue;
+      const from = path.join(root, ...entry.original.split("/"));
+      const to = path.join(testCache, ...entry.original.split("/"));
+      fs.mkdirSync(path.dirname(to), { recursive: true });
+      fs.copyFileSync(from, to);
+    }
+  }
+}
 
 function command(...args) {
   return spawnSync(process.execPath, [cli, ...args], {
-    cwd: root, encoding: "utf8", timeout: 100000, maxBuffer: 5 * 1024 * 1024
+    cwd: root, encoding: "utf8", timeout: 100000, maxBuffer: 5 * 1024 * 1024,
+    env: { ...process.env, AI_REFERENCE_CACHE_DIR: testCache }
   });
 }
 
@@ -96,6 +112,8 @@ test("grid CLI rejects unsupported sizes, ambiguous counts, and overwrite attemp
 
 test("skill exports a real four-panel grid and does not overwrite existing outputs",
   { skip: !browserExecutable() ? "Chrome/Edge is not installed" : false }, () => {
+    seedCache(selectCompositions(catalogs(), { count: "4", "pose-category": "站姿",
+      "outfit-category": "spring", seed: "compare-4" }));
     const dest = fs.mkdtempSync(path.join(os.tmpdir(), "ai-reference-four-grid-"));
     try {
       const png = path.join(dest, "four.png");
@@ -130,6 +148,8 @@ test("skill exports a real four-panel grid and does not overwrite existing outpu
 
 test("skill exports a real nine-panel grid with fixed outfit and nine distinct pose groups",
   { skip: !browserExecutable() ? "Chrome/Edge is not installed" : false }, () => {
+    seedCache(selectCompositions(catalogs(), { count: "9", "pose-category": "站姿",
+      "outfit-id": "SPR-0001", seed: "compare-9" }));
     const dest = fs.mkdtempSync(path.join(os.tmpdir(), "ai-reference-nine-grid-"));
     try {
       const png = path.join(dest, "nine.png");
@@ -156,6 +176,9 @@ test("skill exports a real nine-panel grid with fixed outfit and nine distinct p
 
 test("browser export emits a real 3-image PNG, matching prompt and metadata",
   { skip: !browserExecutable() ? "Chrome/Edge is not installed" : false }, () => {
+    const data = catalogs();
+    seedCache([{ pose: data.poses.find((x) => x.id === "full_sexy_P001_front"),
+      outfit: data.outfits.find((x) => x.id === "SPR-0001") }]);
     const dest = fs.mkdtempSync(path.join(os.tmpdir(), "ai-reference-gallery-test-"));
     try {
       const png = path.join(dest, "three.png");
@@ -186,5 +209,75 @@ test("browser export emits a real 3-image PNG, matching prompt and metadata",
       assert.match(overwrite.stderr, /already exists/);
     } finally {
       fs.rmSync(dest, { recursive: true, force: true });
+    }
+  });
+
+function runInstalled(args, opts) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [opts.cli, ...args], {
+      cwd: opts.cwd, env: opts.env, stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "", stderr = "";
+    child.stdout.on("data", (data) => { stdout += data.toString(); });
+    child.stderr.on("data", (data) => { stderr += data.toString(); });
+    child.on("error", reject);
+    child.on("close", (status) => resolve({ status, stdout, stderr }));
+  });
+}
+
+test("globally installed skill works outside the gallery and fetches ONLY selected images",
+  { skip: !browserExecutable() ? "Chrome/Edge is not installed" : false }, async () => {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "ai-reference-installed-"));
+    const work = path.join(temp, "unrelated-workspace");
+    const installed = path.join(temp, "skills", "ai-reference-gallery");
+    fs.mkdirSync(work, { recursive: true });
+    fs.cpSync(path.join(root, ".agents/skills/ai-reference-gallery"), installed, { recursive: true });
+    const installedCli = path.join(installed, "scripts", "gallery.cjs");
+    const localCache = path.join(temp, "image-cache");
+    const records = catalogs();
+    const pose = records.poses.find((x) => x.id === "full_sexy_P001_front");
+    const outfit = records.outfits.find((x) => x.id === "SPR-0001");
+    const allowed = new Set([pose.original, outfit.original]);
+    const requests = [];
+    const server = http.createServer((req, res) => {
+      const pathname = new URL(req.url, "http://localhost").pathname.slice(1);
+      requests.push(pathname);
+      if (!allowed.has(pathname)) return res.writeHead(404).end();
+      const imageFile = path.join(root, ...pathname.split("/"));
+      res.writeHead(200, { "Content-Type": "image/png" });
+      fs.createReadStream(imageFile).pipe(res);
+    });
+    try {
+      await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+      const env = { ...process.env, AI_REFERENCE_CACHE_DIR: localCache,
+        AI_REFERENCE_ASSET_BASE: `http://127.0.0.1:${server.address().port}/` };
+      const opts = { cli: installedCli, cwd: work, env };
+      assert.equal(fs.existsSync(path.join(work, "catalog.js")), false);
+      assert.equal(fs.existsSync(path.join(work, "img")), false);
+      const search = await runInstalled(["search", "--type", "pose", "--query", "站姿",
+        "--limit", "1"], opts);
+      assert.equal(search.status, 0, search.stderr);
+      assert.equal(JSON.parse(search.stdout).items.length, 1);
+      assert.equal(requests.length, 0, "Search must not fetch any image");
+      const first = await runInstalled(["compose", "--pose-id", pose.id,
+        "--outfit-id", outfit.id, "--out", "reference.png"], opts);
+      assert.equal(first.status, 0, first.stderr);
+      assert.equal(requests.length, 2, "Only the two selected originals should be requested");
+      assert.deepEqual(new Set(requests), allowed);
+      assert.equal(fs.readFileSync(path.join(work, "reference.png"))
+        .subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+      assert.equal(fs.existsSync(path.join(localCache, ...pose.original.split("/"))), true);
+      assert.equal(fs.existsSync(path.join(localCache, ...outfit.original.split("/"))), true);
+      // Close the source server: the second export must work entirely from cache.
+      await new Promise((resolve) => server.close(resolve));
+      const next = await runInstalled(["grid", "--size", "4", "--pose-id", pose.id,
+        "--outfit-id", outfit.id, "--out", "four-from-cache.png"], opts);
+      assert.equal(next.status, 0, next.stderr);
+      assert.equal(JSON.parse(next.stdout).grid.size, 4);
+      assert.equal(requests.length, 2);
+    } finally {
+      server.closeAllConnections();
+      if (server.listening) await new Promise((resolve) => server.close(resolve));
+      fs.rmSync(temp, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
     }
   });

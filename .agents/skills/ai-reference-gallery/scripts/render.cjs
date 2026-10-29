@@ -1,8 +1,7 @@
 "use strict";
 
-// Execute the EXISTING browser compositor in a temporary local Chrome/Edge tab.
-// The HTTP server is loopback-only, exposes only composition.js and img/, and
-// is stopped when the command completes. No image data is sent to any cloud API.
+// Execute the BUNDLED browser compositor in a temporary local Chrome/Edge tab.
+// Only explicitly downloaded source images are exposed via the loopback server.
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -10,7 +9,6 @@ const http = require("node:http");
 const { spawn } = require("node:child_process");
 const { once } = require("node:events");
 
-const root = path.resolve(__dirname, "../../../..");
 const mime = { ".png": "image/png", ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg", ".webp": "image/webp" };
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -38,7 +36,7 @@ function browserExecutable() {
   return guesses.find((name) => name && fs.existsSync(name));
 }
 
-function serve(compositor, uploads) {
+function serve(compositor, uploads, assets) {
   return http.createServer((req, res) => {
     if (req.method !== "GET" && req.method !== "HEAD") return res.writeHead(405).end();
     let file = null;
@@ -50,22 +48,21 @@ function serve(compositor, uploads) {
       return res.end("<!doctype html><meta charset='utf-8'><script src='/composition.js'></script>");
     }
     if (pathname === "/composition.js") {
-      file = compositor;
-      contentType = "text/javascript; charset=utf-8";
+      const js = Buffer.from(compositor, "utf8");
+      res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8",
+        "Content-Length": js.length, "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff" });
+      return res.end(js);
     } else if (pathname.startsWith("/__upload/")) {
       const key = pathname.slice("/__upload/".length);
       if (Object.hasOwn(uploads, key)) {
         file = uploads[key];
         contentType = mime[path.extname(file).toLowerCase()];
       }
-    } else if (pathname.startsWith("/img/") && !pathname.includes("%") &&
-      !pathname.includes("\\") && !pathname.split("/").includes("..")) {
-      const relative = pathname.slice(1);
-      const candidate = path.resolve(root, relative);
-      if (candidate.startsWith(path.join(root, "img") + path.sep)) {
-        file = candidate;
-        contentType = mime[path.extname(file).toLowerCase()];
-      }
+    } else if (pathname.startsWith("/img/") &&
+      Object.hasOwn(assets, pathname.slice(1))) {
+      file = assets[pathname.slice(1)];
+      contentType = mime[path.extname(file).toLowerCase()];
     }
     if (!file || !contentType) return res.writeHead(404).end();
     fs.stat(file, (error, stat) => {
@@ -129,11 +126,13 @@ async function connectChrome(profile, chrome) {
   return { ws, evaluate };
 }
 
-async function render(compositor, uploads, work) {
+async function render(compositor, uploads, work, assets = {}) {
   const binary = browserExecutable();
   if (!binary) throw new Error("Install Chrome/Edge or set CHROME_PATH to your browser executable");
-  if (!fs.existsSync(compositor)) throw new Error("Project composition.js was not found");
-  const server = serve(compositor, uploads);
+  if (!compositor || !compositor.includes("ReferenceComposition")) {
+    throw new Error("Bundled Canvas compositor missing");
+  }
+  const server = serve(compositor, uploads, assets);
   await new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", resolve);

@@ -19,6 +19,7 @@
 - **双图模式**：姿势 + 服装。适合将动作和穿搭要求整理成一张参考图。
 - **三图模式**：姿势 + 服装 + 人物照片。人物照片用于提示 AI 参考面部与发型等特征；移除照片即可恢复双图模式。
 - **随机找灵感**：支持一键随机组合、仅随机姿势或仅随机服装；可限制姿势和服装分类，并选择是否包含双人姿势。
+- **四宫格 / 九宫格**：在「组合制作」切换到四宫格或九宫格，选择服装或姿势素材，一键随机生成不重复的 2×2 / 3×3 灵感板。可按现有分类筛选、逐格点击重抽，勾选显示编号，复制图片或下载 **2048×2048 / 3072×3072** 高清 PNG；如果筛选结果不足，则提示放宽条件，不会用重复图片凑数。宫格是现有素材的排版，不是 AI 自动生成的新图片。
 - **固定顺序**：从左到右依次显示姿势、服装、可选人物参考；可选择白色或浅灰背景，以及显示或隐藏图库图片编号。上传的图片没有图库编号，不会显示假编号。图片等比例完整呈现，不强制裁切。
 - **按需大图预览**：点击「大图预览」才打开弹窗；可直接复制合并图片或下载 PNG。
 - **AI 创作提示词**：自动描述每张参考图的用途及对应位置，支持一键复制文本。
@@ -66,7 +67,7 @@ cd ai-reference-gallery
 
 ## Agent Skill：用自然语言制作参考图
 
-除了网页操作，仓库还提供可供 **Codex 等兼容 Agent Skills 的助手**使用的 [`ai-reference-gallery` Skill](.agents/skills/ai-reference-gallery/SKILL.md)。它会调用真实图库索引和本地 Canvas 合成程序，**直接生成参考板 PNG**，而不是只回复图片编号或提示词。
+除了网页操作，仓库还提供可供 **Codex 等兼容 Agent Skills 的助手**使用的 [`ai-reference-gallery` Skill](.agents/skills/ai-reference-gallery/SKILL.md)。**只安装 Skill 就能搜索素材和生成参考图，不需要克隆整个图库，也不需要手动下载几千张图片。** Skill 自带压缩索引与 Canvas 代码，首次生成时按需下载选中的原图，之后自动复用本地缓存。
 
 | 能力 | 效果 |
 | --- | --- |
@@ -91,32 +92,40 @@ cd ai-reference-gallery
 
 ### 在 Codex 中使用
 
-使用支持仓库级 Agent Skills 的助手打开项目根目录，技能定义位于 `.agents/skills/ai-reference-gallery/SKILL.md`。例如：
+使用 Codex 自带的 Skill 安装器安装**子目录** `.agents/skills/ai-reference-gallery`（而不是整个仓库），安装完成后重启 Codex 即可在任意项目中调用。例如 Windows PowerShell：
+
+```powershell
+python "$env:USERPROFILE\.codex\skills\.system\skill-installer\scripts\install-skill-from-github.py" --repo vculjp/ai-reference-gallery --path .agents/skills/ai-reference-gallery --method git
+```
+
+已安装旧版 Skill 的用户需要重新安装以获取免克隆版本。之后可以直接向 Codex 说：
 
 > `$ai-reference-gallery` 随机找 9 组春季穿搭，生成一张九宫格参考图，并输出每格的 AI 生图提示词。
 
-也可以直接在项目根目录用命令行运行（无需启动网站）：
+也可以在任意目录用命令行运行（无需启动网站或下载图库）。Windows PowerShell 示例：
 
-```bash
+```powershell
+$skill = "$env:USERPROFILE\.codex\skills\ai-reference-gallery\scripts\gallery.cjs"
+
 # 1. 搜索真实姿势素材
-node .agents/skills/ai-reference-gallery/scripts/gallery.cjs search --type pose --query "站姿" --limit 5
+node $skill search --type pose --query "站姿" --limit 5
 
 # 2. 批量生成 5 张独立的双图参考板
-node .agents/skills/ai-reference-gallery/scripts/gallery.cjs compose --pose-category 站姿 --count 5 --seed demo --out-dir output/demo
+node $skill compose --pose-category 站姿 --count 5 --seed demo --out-dir output/demo
 
 # 3. 四宫格：4 组春季搭配合成 1 张 PNG
-node .agents/skills/ai-reference-gallery/scripts/gallery.cjs grid --size 4 --pose-category 站姿 --outfit-category spring --seed four-demo --out output/four-grid.png
+node $skill grid --size 4 --pose-category 站姿 --outfit-category spring --seed four-demo --out output/four-grid.png
 
 # 4. 九宫格：随机生成 9 组不重复的姿势与服装
-node .agents/skills/ai-reference-gallery/scripts/gallery.cjs grid --size 9 --pose-category 站姿 --outfit-category spring --seed readme-nine-random-v3 --out output/nine-grid.png
+node $skill grid --size 9 --pose-category 站姿 --outfit-category spring --seed readme-nine-random-v3 --out output/nine-grid.png
 
 # 5. 加入自己的角色照片，生成三图参考板
-node .agents/skills/ai-reference-gallery/scripts/gallery.cjs compose --pose-id full_sexy_P001_front --outfit-id SPR-0001 --person "C:/Photos/person.png" --out output/my-reference.png
+node $skill compose --pose-id full_sexy_P001_front --outfit-id SPR-0001 --person "C:/Photos/person.png" --out output/my-reference.png
 ```
 
 每个输出名称对应三个文件：`xxx.png`（实际合成图）、`xxx.txt`（可复制的 AI 创作提示词）、`xxx.json`（使用的素材和生成信息）。宫格文件的 JSON 还记录每格的行列位置及素材编号，方便复现。
 
-**运行要求：**Node.js **22+** 和本机 **Chrome 或 Edge**（仅搜索命令不需要浏览器）。如未自动识别浏览器，可设置 `CHROME_PATH`；无需 npm 依赖、API Key 或云端生图服务。默认输出位于 `output/skill-compositions/` 或 `output/skill-grids/`，已被 Git 忽略，不会把人物照片或生成结果上传到仓库。
+**运行要求：**Node.js **22+** 和本机 **Chrome 或 Edge**（仅搜索命令不需要浏览器）。未缓存的图片首次导出需要网络，下载源为项目静态图库及 GitHub Raw，失败时可指定 `AI_REFERENCE_ASSET_BASE`。图片缓存位于用户目录 `~/.cache/ai-reference-gallery/img/`，可用 `AI_REFERENCE_CACHE_DIR` 修改；本地人物照片不会上传。无需 npm 依赖、API Key 或云端生图服务。生成文件默认写入**当前工作目录**下的 `output/skill-compositions/` 或 `output/skill-grids/`。
 
 更多参数、批量生成和问题排查请看 [Skill 使用说明](.agents/skills/ai-reference-gallery/references/usage.md)。
 

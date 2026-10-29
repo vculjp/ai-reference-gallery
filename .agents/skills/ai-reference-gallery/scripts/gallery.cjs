@@ -1,16 +1,27 @@
 #!/usr/bin/env node
 "use strict";
 
-// Local Agent Skill entry point: search catalog assets and create reference PNGs.
-// Node.js 22+; image rendering is delegated to the gallery's own Canvas code.
+// Standalone Agent Skill: self-contained indexes, selected-image downloads,
+// and the website's original Canvas compositor bundled with the installed skill.
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const zlib = require("node:zlib");
 const { render } = require("./render.cjs");
+const { prepareAssets } = require("./asset-store.cjs");
 
-const root = path.resolve(__dirname, "../../../..");
+const root = process.cwd();
+const skillRoot = path.resolve(__dirname, "..");
 const locales = ["zh-CN", "en", "ja"];
-const read = (name) => fs.readFileSync(path.join(root, name), "utf8");
+let bundled;
+function read(name) {
+  if (!bundled) {
+    const archive = path.join(skillRoot, "data", "runtime.json.gz");
+    bundled = JSON.parse(zlib.gunzipSync(fs.readFileSync(archive)).toString("utf8"));
+  }
+  if (!Object.hasOwn(bundled, name)) throw new Error(`Missing bundled source ${name}`);
+  return bundled[name];
+}
 
 function catalogs(language = "zh-CN") {
   if (!locales.includes(language)) throw new Error("--lang must be zh-CN, en or ja");
@@ -225,7 +236,8 @@ async function compose(data, flags) {
   const uploads = { ...(person ? { person: person.filename } : {}),
     ...(outfitFile ? { outfit: outfitFile.filename } : {}) };
   const records = [];
-  await render(path.join(root, "composition.js"), uploads, async (draw) => {
+  const assets = await prepareAssets(pairs);
+  await render(read("composition.js"), uploads, async (draw) => {
     for (let i = 0; i < pairs.length; i++) {
       const { pose, outfit } = pairs[i];
       const inputs = compositionInputs(pairs[i], person, outfitFile, flags);
@@ -245,7 +257,7 @@ async function compose(data, flags) {
       fs.writeFileSync(dest.metadata, JSON.stringify(meta, null, 2) + "\n");
       records.push(meta);
     }
-  });
+  }, assets);
   return { count: records.length, files: records };
 }
 
@@ -279,8 +291,9 @@ async function grid(data, flags) {
     ...compositionMeta(data, pair, person, outfitFile)
   }));
   const prompt = gridPrompt(data, pairs, person);
-  const rendered = await render(path.join(root, "composition.js"), uploads, async (_draw, drawGrid) =>
-    drawGrid(entries));
+  const assets = await prepareAssets(pairs);
+  const rendered = await render(read("composition.js"), uploads, async (_draw, drawGrid) =>
+    drawGrid(entries), assets);
   const png = Buffer.from(rendered.base64, "base64");
   if (png.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") {
     throw new Error("Grid renderer did not produce a PNG");
@@ -304,7 +317,9 @@ const help = `AI Reference Gallery Skill (Node.js 22+)
           [--person FILE] [--count 1..20] [--seed STRING] [--background white|soft]
           [--labels true|false] [--lang zh-CN|en|ja] [--out FILE.png | --out-dir DIR] [--overwrite]
   grid --size 4|9 [the same pose, outfit, person, filters, seed, background, labels and output flags as compose]
-Default output directory: output/skill-compositions
+No gallery clone required: the skill contains catalogs and fetches selected original images on demand.
+Images are cached under ~/.cache/ai-reference-gallery (override with AI_REFERENCE_CACHE_DIR).
+Default output directory: ./output/skill-compositions (relative to current working directory)
 Default grid output: output/skill-grids/grid-4.png or grid-9.png
 PNG export requires an installed Chrome/Edge browser. Set CHROME_PATH if needed.
 `;
