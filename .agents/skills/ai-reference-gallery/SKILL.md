@@ -1,6 +1,6 @@
 ---
 name: ai-reference-gallery
-description: Standalone AI reference-image Skill. Search bundled pose and outfit catalogs and automatically download only selected photos to make 2/3-image PNG boards or 4/9-panel grids with prompts. No gallery clone required. Use for pose/outfit matching, reference image generation, and batch export.
+description: Standalone pose and outfit reference Skill. Supports natural-language Chinese/English selection, local style exclusions, image download caching, 2/3-image boards, single-image and paired 4/9-panel grids. No full gallery download or API key required.
 ---
 
 # AI Reference Gallery
@@ -10,9 +10,10 @@ description: Standalone AI reference-image Skill. Search bundled pose and outfit
 ## Workflow
 
 1. Find this installed `SKILL.md` and run its sibling `scripts/gallery.cjs` with an **absolute path** (for example `node "C:\Users\YOUR_NAME\.codex\skills\ai-reference-gallery\scripts\gallery.cjs" ...`). The current directory controls where output files are written; it need not contain a gallery or any images.
-2. Translate the user's natural-language request to catalog terms. `categories` and `search` use the bundled metadata and work offline. Never invent IDs or paths; use actual results. Pose angles have separate IDs; multiple angles may be members of one `poseKey`.
-3. Run `compose` with exact IDs when specific matches matter, or filters plus `--seed` and `--count` for reproducible random compositions. For a **四宫格 / four-grid** or **九宫格 / nine-grid**, run `grid --size 4` or `grid --size 9`: the output is ONE PNG with 4/9 different reference combinations, not 4/9 separate PNG files.
-4. For export, the Skill automatically downloads only the chosen originals from the project's static image site, falling back to GitHub, and retains a local cache. This requires network access **only for uncached images**. Read the returned JSON. The PNG is the real reference board; the neighboring `.txt` is its prompt; the `.json` records selected references and dimensions.
+2. Run `doctor` first when a user's environment is unknown or exports fail. It checks Node.js, Chrome/Edge, bundled runtime, cache write permissions and output directory offline.
+3. Use `--describe "春季自然站姿，不要性感风格"` for explainable rule-based selection, or explicit category/ID filters. The `selection` JSON field lists matched and **unsupported** constraints. Never claim to understand unsupported styles (e.g. 日系) visually or semantically. `search` and `categories` work offline; never invent IDs.
+4. Run `compose` for separate two/three-image PNGs; use `grid --size 4|9 --grid-mode pairs` for 4/9 paired reference boards in **one** PNG (default), or `grid --size 4|9 --grid-mode single --grid-source pose|outfit` for a **single-image grid** where each cell contains one independent image. Single-image grids support `--aspect square|portrait`. If no fixed ID is requested, grids require distinct matching assets and fail clearly rather than silently repeating.
+5. The Skill downloads only the selected originals (static site, then GitHub fallback) and retains an SHA-256-checked local cache. Internet is needed only for uncached images. Read the returned JSON; output `.png`, `.txt` and `.json` paths accurately.
 
 ## Commands
 
@@ -23,6 +24,8 @@ description: Standalone AI reference-image Skill. Search bundled pose and outfit
 node scripts/gallery.cjs categories --type pose
 node scripts/gallery.cjs search --type pose --query "站姿" --limit 8
 node scripts/gallery.cjs search --type outfit --category spring --query "white"
+node scripts/gallery.cjs doctor
+node scripts/gallery.cjs search --type outfit --describe "春季穿搭不要性感风格" --limit 8
 
 # Reproducible random combinations; no need to start a browser for searching.
 node scripts/gallery.cjs compose --pose-category 站姿 --outfit-category spring --count 5 --seed street-01 --out-dir output/street
@@ -39,6 +42,13 @@ node scripts/gallery.cjs grid --size 4 --pose-category 站姿 --outfit-category 
 # Nine-panel comparison grid: nine poses against the SAME outfit (3 × 3).
 node scripts/gallery.cjs grid --size 9 --outfit-id SPR-0001 --seed nine-demo --out output/nine-grid.png
 
+# One image in each cell: 3x3 pose sheet, or portrait 2x2 clothing sheet.
+node scripts/gallery.cjs grid --size 9 --grid-mode single --grid-source pose --pose-category 站姿 --out output/poses.png
+node scripts/gallery.cjs grid --size 4 --grid-mode single --grid-source outfit --aspect portrait --out output/outfits.png
+
+# Natural-language constraints, seed makes the selection repeatable.
+node scripts/gallery.cjs grid --size 9 --describe "日系春季穿搭，动作自然站姿，不要性感风格" --seed demo --out output/natural.png
+
 # Four/nine variations of the SAME character with a user-provided third reference:
 node scripts/gallery.cjs grid --size 4 --person "C:/Photos/person.png" --out output/my-character-grid.png
 ```
@@ -49,13 +59,15 @@ PowerShell from **any folder**, after installing the Skill through Codex:
 $skill = "$env:USERPROFILE\.codex\skills\ai-reference-gallery\scripts\gallery.cjs"
 node $skill search --type pose --query "站姿" --limit 5
 node $skill grid --size 4 --pose-category 站姿 --outfit-category spring --out output/four-grid.png
+node $skill grid --size 9 --grid-mode single --grid-source outfit --describe "春季服装" --out output/spring.png
+node $skill doctor
 ```
 
 Every individual reference board uses **fixed left-to-right** order: pose → outfit → optional person. The `grid` command arranges complete boards in a numbered 2×2 or 3×3 matrix. The grid's `.txt` contains individual prompts for every cell. Only catalog images show catalog IDs. Images are contained without cropping. `--person` and `--outfit-image` accept local JPG, PNG or WebP up to 50 MB; user photos stay local. Defaults are `output/skill-compositions` for `compose` and `output/skill-grids/grid-4.png` or `grid-9.png` for `grid`, **relative to the caller's working directory**.
 
-`--lang zh-CN|en|ja` controls labels and generated prompts. Random selection defaults to single-person poses; use `--include-duo` for two-person poses. `compose --count` ranges from 1 to 20 and avoids repeating pose groups or outfits until their pools are exhausted. `grid` uses `--size 4|9` instead of `--count`; if selection filters yield fewer unique options, repetitions may occur. Existing output files are not overwritten unless `--overwrite` is explicitly given.
+`--lang zh-CN|en|ja` controls catalog labels and prompts. Random selection defaults to single-person poses; use `--include-duo` for two-person poses. `compose --count` ranges from 1 to 20; `grid` uses `--size 4|9`. Explicit `--pose-id` / `--outfit-id` locks an asset across cells. Otherwise grid outputs enforce distinct references. `--describe` uses local catalog rules, NOT AI image recognition; unsupported style terms are reported. Existing files are never overwritten without `--overwrite`.
 
-PNG generation requires **Node.js 22+ and installed Chrome or Edge**. Set `CHROME_PATH` to the browser executable when auto-detection fails. No npm packages or remote API keys are required. First-time image download needs internet access; downloaded originals are cached under `~/.cache/ai-reference-gallery/img/` (override with `AI_REFERENCE_CACHE_DIR`). Change `AI_REFERENCE_ASSET_BASE` to a trusted HTTPS static mirror if necessary. Only search/categories work without Chrome or internet.
+PNG generation requires **Node.js 22+ and installed Chrome or Edge**. Set `CHROME_PATH` if auto-detection fails. No npm packages or remote API keys are required. Original downloads go into `~/.cache/ai-reference-gallery/img/` (override with `AI_REFERENCE_CACHE_DIR`); cached files get SHA-256 sidecars and are re-fetched if changed or corrupted. Downloader prints progress to stderr while keeping JSON output on stdout. `AI_REFERENCE_ASSET_BASE` can point to a trusted HTTPS static mirror. `doctor`, `search` and `categories` work without image downloads.
 
 See [usage and troubleshooting](references/usage.md) for search semantics and error recovery.
 

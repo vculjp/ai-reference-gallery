@@ -7,6 +7,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
+const { createHash } = require("node:crypto");
 
 const sources = [
   "https://gallery.zsj.pp.ua/",
@@ -24,7 +25,9 @@ async function downloadFile(url, target) {
   try {
     await new Promise((resolve, reject) => {
       const child = spawn(bin, ["--fail", "--location", "--silent", "--show-error",
-        "--connect-timeout", "8", "--max-time", "30", "--output", target, url]);
+        "--connect-timeout", "8", "--max-time", "30", "--max-redirs", "3",
+        "--proto-redir", "=https", "--max-filesize", "36700160",
+        "--output", target, url]);
       let error = "";
       child.stderr.on("data", (data) => { error += data.toString().slice(0, 500); });
       child.on("error", reject);
@@ -36,9 +39,24 @@ async function downloadFile(url, target) {
     // Fallback on platforms where curl isn't installed.
     const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const final = new URL(response.url);
+    if (final.protocol !== "https:" && !(final.protocol === "http:" &&
+      ["localhost", "127.0.0.1"].includes(final.hostname))) {
+      throw new Error("Download redirected to an insecure URL");
+    }
     const length = Number(response.headers.get("content-length") || 0);
     if (length > 35 * 1024 * 1024) throw new Error("Image exceeds 35 MB");
-    fs.writeFileSync(target, new Uint8Array(await response.arrayBuffer()));
+    let total = 0;
+    const chunks = [];
+    for await (const chunk of response.body) {
+      total += chunk.byteLength;
+      if (total > 35 * 1024 * 1024) {
+        await response.body.cancel().catch(() => {});
+        throw new Error("Image exceeds 35 MB");
+      }
+      chunks.push(Buffer.from(chunk));
+    }
+    fs.writeFileSync(target, Buffer.concat(chunks));
   }
 }
 
@@ -56,14 +74,33 @@ function cachePath(relative) {
   return path.join(cacheDir(), ...relative.split("/"));
 }
 
+function checksum(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+function validCache(target, ext) {
+  if (!fs.existsSync(target)) return false;
+  try {
+    const stat = fs.statSync(target);
+    if (!stat.isFile() || !stat.size || stat.size > 35 * 1024 * 1024) return false;
+    const bytes = fs.readFileSync(target);
+    if (!signatureOK(bytes, ext)) return false;
+    const digest = checksum(bytes);
+    const record = target + ".sha256";
+    if (fs.existsSync(record)) return fs.readFileSync(record, "utf8").trim() === digest;
+    // An existing pre-upgrade cache entry has no digest yet.
+    fs.writeFileSync(record, digest + "\n");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function download(relative) {
   const target = cachePath(relative);
   const ext = path.extname(target).toLowerCase();
-  if (fs.existsSync(target)) {
-    const data = fs.readFileSync(target);
-    if (signatureOK(data, ext)) return target;
-    fs.rmSync(target, { force: true });
-  }
+  if (validCache(target, ext)) return target;
+  fs.rmSync(target, { force: true });
+  fs.rmSync(target + ".sha256", { force: true });
   const encoded = relative.split("/").map(encodeURIComponent).join("/");
   let lastError;
   for (const location of bases()) {
@@ -83,7 +120,9 @@ async function download(relative) {
           !signatureOK(fs.readFileSync(temporary), ext)) {
           throw new Error(`Invalid image returned for ${relative}`);
         }
+        const digest = checksum(fs.readFileSync(temporary));
         fs.renameSync(temporary, target);
+        fs.writeFileSync(target + ".sha256", digest + "\n");
         return target;
       } catch (err) {
         lastError = err;
@@ -105,10 +144,16 @@ async function prepareAssets(pairs) {
   const files = {};
   // Keep concurrency modest to avoid saturating public GitHub or Windows I/O.
   const items = [...names];
+  const cached = items.filter((name) => validCache(cachePath(name),
+    path.extname(name).toLowerCase())).length;
+  if (cached !== items.length) {
+    console.error(`Fetching ${items.length - cached} selected image(s); ${cached} already cached. Existing downloads are preserved if a later image fails.`);
+  }
   for (let i = 0; i < items.length; i += 4) {
     const batch = items.slice(i, i + 4);
     const local = await Promise.all(batch.map(download));
     batch.forEach((name, j) => { files[name] = local[j]; });
+    if (cached !== items.length) console.error(`Prepared ${Math.min(i + batch.length, items.length)}/${items.length} image(s)`);
   }
   return files;
 }

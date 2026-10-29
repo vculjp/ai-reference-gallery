@@ -8,8 +8,9 @@ const os = require("node:os");
 const path = require("node:path");
 const http = require("node:http");
 const { spawn, spawnSync } = require("node:child_process");
-const { catalogs, findAssets, selectCompositions, promptFor, gridPrompt } =
+const { catalogs, findAssets, selectCompositions, selectSingles, promptFor, gridPrompt } =
   require("../.agents/skills/ai-reference-gallery/scripts/gallery.cjs");
+const { interpret } = require("../.agents/skills/ai-reference-gallery/scripts/smart-select.cjs");
 const { browserExecutable } =
   require("../.agents/skills/ai-reference-gallery/scripts/render.cjs");
 const root = path.resolve(__dirname, "..");
@@ -61,6 +62,55 @@ test("random composition is reproducible and avoids duplicate pose groups", () =
     p.outfit.category === "spring"), true);
   assert.match(promptFor(data, first[0].pose, first[0].outfit, null), /左侧/);
   assert.match(promptFor(data, first[0].pose, first[0].outfit, { id: "upload" }), /右侧/);
+});
+
+test("natural-language selection respects season, pose category and style exclusions", () => {
+  const text = "日系春季穿搭，动作自然站姿，不要性感风格";
+  const intent = interpret(text);
+  assert.ok(intent.outfitCategories.includes("spring"));
+  assert.ok(intent.poseCategories.includes("站姿"));
+  assert.ok(intent.unsupported.includes("日系"));
+  const data = catalogs();
+  const flags = { describe: text, seed: "natural-selection", count: "9" };
+  const pairs = selectCompositions(data, flags);
+  assert.equal(pairs.length, 9);
+  assert.ok(pairs.every((pair) => pair.pose.category_zh === "站姿"));
+  assert.ok(pairs.every((pair) => pair.outfit.category === "spring"));
+  assert.ok(pairs.every((pair) => !/full_sexy|upper80/.test(pair.pose.id)));
+  assert.equal(new Set(pairs.map((pair) => pair.pose.pose_key)).size, 9);
+  assert.equal(new Set(pairs.map((pair) => pair.outfit.id)).size, 9);
+  assert.deepEqual(pairs.map((pair) => pair.pose.id),
+    selectCompositions(data, flags).map((pair) => pair.pose.id));
+  const search = command("search", "--type", "outfit", "--describe", text, "--limit", "3");
+  assert.equal(search.status, 0, search.stderr);
+  assert.equal(JSON.parse(search.stdout).selection.unsupported[0], "日系");
+  const unsupported = command("compose", "--describe", "赛博风机器人火星奇观");
+  assert.notEqual(unsupported.status, 0);
+  assert.match(unsupported.stderr, /No supported/);
+});
+
+test("doctor diagnoses bundled runtime, Chrome and writable cache without network", () => {
+  const status = command("doctor");
+  assert.equal(status.status, 0, status.stderr);
+  const value = JSON.parse(status.stdout);
+  assert.equal(value.ok, true);
+  assert.ok(value.checks.some((check) => check.name === "bundle" && check.ok));
+  assert.ok(value.checks.some((check) => check.name === "browser" && check.ok));
+});
+
+test("single-image grid rejects incompatible parameters and insufficient unique matches", () => {
+  const result = command("grid", "--size", "4", "--grid-mode", "single",
+    "--grid-source", "outfit", "--person", "test.png");
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /do not accept --person/);
+  const invalid = command("grid", "--size", "4", "--grid-mode", "single",
+    "--aspect", "wide");
+  assert.notEqual(invalid.status, 0);
+  assert.match(invalid.stderr, /--aspect must be/);
+  const pairs = command("grid", "--size", "4", "--grid-mode", "pairs",
+    "--grid-source", "pose");
+  assert.notEqual(pairs.status, 0);
+  assert.match(pairs.stderr, /--grid-source and --aspect require/);
 });
 
 test("search CLI emits IDs and errors for nonexistent assets or bad options", () => {
@@ -174,6 +224,55 @@ test("skill exports a real nine-panel grid with fixed outfit and nine distinct p
     }
   });
 
+test("standalone Skill exports a portrait four-grid of four distinct outfit images",
+  { skip: !browserExecutable() ? "Chrome/Edge is not installed" : false }, () => {
+    const data = catalogs();
+    const selected = selectSingles(data, {
+      "grid-source": "outfit", "outfit-category": "spring", seed: "one-image-4"
+    }, 4);
+    seedCache(selected.map((outfit) => ({ pose: null, outfit })));
+    const dest = fs.mkdtempSync(path.join(os.tmpdir(), "ai-reference-single-grid-"));
+    try {
+      const filename = path.join(dest, "single-4.png");
+      const result = command("grid", "--size", "4", "--grid-mode", "single",
+        "--grid-source", "outfit", "--outfit-category", "spring", "--aspect", "portrait",
+        "--seed", "one-image-4", "--out", filename);
+      assert.equal(result.status, 0, result.stderr || result.stdout);
+      const report = JSON.parse(result.stdout);
+      assert.equal(report.grid.mode, "single");
+      assert.equal(report.grid.source, "outfit");
+      assert.deepEqual(report.image, { width: 2400, height: 3200 });
+      assert.equal(new Set(report.panels.map((item) => item.id)).size, 4);
+      const png = fs.readFileSync(filename);
+      assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+      assert.ok(png.length > 100000);
+      assert.match(fs.readFileSync(path.join(dest, "single-4.txt"), "utf8"), /第4格/);
+    } finally { fs.rmSync(dest, { recursive: true, force: true }); }
+  });
+
+test("standalone Skill exports a nine-grid with nine different pose images",
+  { skip: !browserExecutable() ? "Chrome/Edge is not installed" : false }, () => {
+    const selected = selectSingles(catalogs(), {
+      "grid-source": "pose", "pose-category": "站姿", seed: "one-image-9"
+    }, 9);
+    seedCache(selected.map((pose) => ({ pose, outfit: null })));
+    const dest = fs.mkdtempSync(path.join(os.tmpdir(), "ai-reference-nine-single-"));
+    try {
+      const filename = path.join(dest, "single-9.png");
+      const result = command("grid", "--size", "9", "--grid-mode", "single",
+        "--grid-source", "pose", "--pose-category", "站姿",
+        "--seed", "one-image-9", "--out", filename);
+      assert.equal(result.status, 0, result.stderr || result.stdout);
+      const report = JSON.parse(result.stdout);
+      assert.equal(report.grid.mode, "single");
+      assert.equal(report.panels.length, 9);
+      assert.equal(new Set(report.panels.map((item) => item.id)).size, 9);
+      assert.deepEqual(report.image, { width: 2400, height: 2400 });
+      assert.equal(fs.readFileSync(filename).subarray(0, 8).toString("hex"),
+        "89504e470d0a1a0a");
+    } finally { fs.rmSync(dest, { recursive: true, force: true }); }
+  });
+
 test("browser export emits a real 3-image PNG, matching prompt and metadata",
   { skip: !browserExecutable() ? "Chrome/Edge is not installed" : false }, () => {
     const data = catalogs();
@@ -268,13 +367,21 @@ test("globally installed skill works outside the gallery and fetches ONLY select
         .subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
       assert.equal(fs.existsSync(path.join(localCache, ...pose.original.split("/"))), true);
       assert.equal(fs.existsSync(path.join(localCache, ...outfit.original.split("/"))), true);
+      const saved = path.join(localCache, ...pose.original.split("/"));
+      const corrupted = fs.readFileSync(saved);
+      corrupted[corrupted.length - 20] ^= 1; // PNG signature remains valid
+      fs.writeFileSync(saved, corrupted);
+      const repaired = await runInstalled(["compose", "--pose-id", pose.id,
+        "--outfit-id", outfit.id, "--out", "repaired.png"], opts);
+      assert.equal(repaired.status, 0, repaired.stderr);
+      assert.equal(requests.length, 3, "SHA-256 mismatch must redownload the damaged asset");
       // Close the source server: the second export must work entirely from cache.
       await new Promise((resolve) => server.close(resolve));
       const next = await runInstalled(["grid", "--size", "4", "--pose-id", pose.id,
         "--outfit-id", outfit.id, "--out", "four-from-cache.png"], opts);
       assert.equal(next.status, 0, next.stderr);
       assert.equal(JSON.parse(next.stdout).grid.size, 4);
-      assert.equal(requests.length, 2);
+      assert.equal(requests.length, 3);
     } finally {
       server.closeAllConnections();
       if (server.listening) await new Promise((resolve) => server.close(resolve));

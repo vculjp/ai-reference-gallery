@@ -20,6 +20,7 @@ The source catalog is included in the Skill (~87 KB compressed). On first export
 - `categories --type pose|outfit`
 - `--lang zh-CN|en|ja` displays translated category and pose names where provided.
 - Search performs case-insensitive substring matching across the ID and original / localized catalog fields. Multiple whitespace-separated terms must **all** match. There is no embedding model or external semantic search API; translate vague descriptions to useful catalog keywords first.
+- `--describe "春季自然站姿，不要性感风格"` supports local rules for seasons, standing/sitting/squatting/lying poses, some angles/colors, natural/casual pose preference, and style exclusions. It can be used with `search`, `compose` or `grid`. JSON includes `selection.matched` and `selection.unsupported`. For example `日系` currently has no reliable visual classification and is reported as unsupported, not silently claimed as matched. This is an **interpretable filtering heuristic**, not visual understanding or an LLM.
 - Use `--include-duo` to include two-person poses. Explicit pose IDs work even if they are two-person assets.
 
 ## Composition
@@ -40,6 +41,19 @@ Use `grid --size 4` for a **2×2 layout** or `grid --size 9` for a **3×3 layout
 
 The companion `.txt` describes the grid and provides a separate AI prompt for each numbered cell. The `.json` lists row, column, pose ID, outfit ID, and optional photo reference for each cell, plus the final PNG dimensions.
 
+### Two grid modes
+
+- `--grid-mode pairs` (default): each cell combines one pose and one outfit; optional `--person` adds the same local character photo to each paired board. Legacy commands work unchanged.
+- `--grid-mode single --grid-source pose`: each cell shows **one pose**. With `--grid-source outfit`, each cell shows **one outfit**. No `--person` or `--outfit-image` in this mode. For `--aspect square` the output is 2400×2400; `--aspect portrait` outputs 2400×3200, with sources fully contained and not cropped. `--aspect` is only valid for single-image grids.
+- If no exact ID is fixed, all 4 or 9 grid items must be unique; conflicting or overly narrow filters return an actionable error rather than a grid with duplicate images.
+
+```bash
+node scripts/gallery.cjs doctor
+node scripts/gallery.cjs grid --size 4 --grid-mode single --grid-source outfit --out output/outfits.png
+node scripts/gallery.cjs grid --size 9 --grid-mode single --grid-source pose --aspect portrait --describe "自然站姿" --out output/poses.png
+node scripts/gallery.cjs grid --size 9 --grid-mode pairs --describe "春季自然站姿，不要性感风格" --seed spring1 --out output/matches.png
+```
+
 ```bash
 # Commands below assume you are inside the installed Skill directory.
 # Four distinct outfits/poses.
@@ -52,7 +66,7 @@ node scripts/gallery.cjs grid --size 9 --outfit-id SPR-0001 --seed pose-set-9
 node scripts/gallery.cjs grid --size 4 --person "C:/Photos/person.jpg" --out output/my-four-grid.png
 ```
 
-Grid accepts the same catalog filters and options as `compose`, except it requires `--size 4|9` instead of `--count`. Use `--pose-id` / `--outfit-id` to lock one reference across every cell. If fewer distinct catalog matches exist than the requested grid size, assets may repeat. Every grid element preserves original image proportions and follows fixed pose → outfit → optional person order. The grid canvas is landscape-oriented to leave room for the wide paired reference boards.
+Grid accepts the same catalog filters and options as `compose`, except it requires `--size 4|9` instead of `--count`. Use `--pose-id` / `--outfit-id` to intentionally lock one reference across every paired cell. Without a locked ID, too few unique catalog matches cause an error rather than repeating assets. Every grid element preserves original image proportions. Paired grids use fixed pose → outfit → optional person order and a landscape canvas; single-image grids contain exactly one source image per cell.
 
 ## Common errors
 
@@ -60,6 +74,8 @@ Grid accepts the same catalog filters and options as `compose`, except it requir
 - **Output already exists**: choose another `--out` or `--out-dir`; use `--overwrite` only with the user's consent.
 - **Chrome/Edge not found**: install a supported browser or set `CHROME_PATH`.
 - **Image downloading failed**: check connectivity to the project's image domain / GitHub. The script retries and can use a configured `AI_REFERENCE_ASSET_BASE` mirror. It does NOT require cloning the image repository. Cached images are reused offline.
+- **Cache inconsistency**: cached images are validated by file format and a local SHA-256 sidecar; if the digest changes the downloader re-fetches that image. The hash guards against later local corruption, not against a malicious source or an incorrect source image.
+- **Environment issues**: run `node scripts/gallery.cjs doctor` from inside the installed Skill folder or call it via absolute path; it checks Node.js, Chrome/Edge, runtime archive, cache and current output folder without a network request.
 - **Bundled runtime missing**: reinstall the entire Skill directory including `data/runtime.json.gz`, `scripts/` and `SKILL.md` (not just one script).
 - **Image loading failed**: ensure your selected `--person` / `--outfit-image` is a valid local JPG, PNG or WebP file ≤50 MB.
 - **Node/WebSocket unsupported**: run Node.js 22 or newer.

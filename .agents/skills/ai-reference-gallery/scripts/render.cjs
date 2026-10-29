@@ -231,7 +231,66 @@ async function render(compositor, uploads, work, assets = {}) {
       })()`;
       return session.evaluate(expression);
     };
-    return await work(draw, drawGrid);
+    const drawSingle = async (entries, settings) => {
+      if (![4, 9].includes(entries.length)) throw new Error("Single grid requires 4 or 9 assets");
+      // Keep every source image intact; no cover cropping. The only fetches
+      // possible here are the exact originals supplied to the loopback server.
+      for (const item of entries) {
+        if (!Object.hasOwn(assets, item.path)) throw new Error(`Missing prepared asset: ${item.path}`);
+      }
+      const expression = `(async () => {
+        const entries = ${JSON.stringify(entries)};
+        const settings = ${JSON.stringify(settings)};
+        const cols = Math.sqrt(entries.length);
+        const width = 2400;
+        const height = settings.aspect === 'portrait' ? 3200 : 2400;
+        const margin = 42, gap = 18;
+        const tileW = (width - 2*margin - gap*(cols-1))/cols;
+        const tileH = (height - 2*margin - gap*(cols-1))/cols;
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = settings.background === 'soft' ? '#eef1f5' : '#ffffff';
+        ctx.fillRect(0,0,width,height);
+        for (let i=0;i<entries.length;i++) {
+          const item = entries[i];
+          const x = margin + (i % cols)*(tileW+gap);
+          const y = margin + Math.floor(i/cols)*(tileH+gap);
+          const labelH = settings.labels ? 62 : 0;
+          ctx.fillStyle = '#f8f9fb';
+          ctx.fillRect(x,y,tileW,tileH);
+          const response = await fetch('/'+item.path);
+          if (!response.ok) throw new Error('Image fetch failed: '+item.id);
+          const image = await createImageBitmap(await response.blob());
+          try {
+            const pad = 12;
+            const maxW = tileW-pad*2, maxH = tileH-pad*2-labelH;
+            const scale = Math.min(maxW/image.width,maxH/image.height);
+            const w = image.width*scale, h = image.height*scale;
+            ctx.drawImage(image,x+(tileW-w)/2,y+pad+(maxH-h)/2,w,h);
+          } finally { image.close(); }
+          if (settings.labels) {
+            ctx.fillStyle = '#344054';
+            ctx.font = '600 24px system-ui,sans-serif';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(String(i+1).padStart(2,'0')+'  '+item.id,
+              x+20,y+tileH-labelH/2,tileW-40);
+          }
+        }
+        const blob = await new Promise((resolve,reject)=>canvas.toBlob(
+          b=>b?resolve(b):reject(new Error('PNG_ENCODE_FAILED')),'image/png'));
+        const base64 = await new Promise((resolve,reject)=>{
+          const reader = new FileReader();
+          reader.onload=()=>resolve(reader.result.split(',')[1]);
+          reader.onerror=()=>reject(new Error('PNG_ENCODE_FAILED'));
+          reader.readAsDataURL(blob);
+        });
+        return {width,height,base64};
+      })()`;
+      return session.evaluate(expression);
+    };
+    return await work(draw, drawGrid, drawSingle);
   } finally {
     session?.ws.close();
     const exited = chrome.exitCode !== null || chrome.signalCode !== null;

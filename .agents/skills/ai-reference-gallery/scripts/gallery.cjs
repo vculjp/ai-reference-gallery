@@ -9,6 +9,8 @@ const vm = require("node:vm");
 const zlib = require("node:zlib");
 const { render } = require("./render.cjs");
 const { prepareAssets } = require("./asset-store.cjs");
+const { interpret, rank, selectionInfo } = require("./smart-select.cjs");
+const { diagnostics } = require("./doctor.cjs");
 
 const root = process.cwd();
 const skillRoot = path.resolve(__dirname, "..");
@@ -58,15 +60,15 @@ function findAssets(data, type, { query = "", category = "", includeDuo = false 
 
 function parseArgs(args) {
   const [command, ...rest] = args;
-  if (!["search", "categories", "compose", "grid", "help", "--help"].includes(command)) {
-    throw new Error("Expected command: search, categories, compose or grid. Run 'help' for examples.");
+  if (!["search", "categories", "compose", "grid", "doctor", "help", "--help"].includes(command)) {
+    throw new Error("Expected search, categories, compose, grid or doctor. Run 'help' for examples.");
   }
   const flags = {};
   const booleans = new Set(["include-duo", "overwrite"]);
   const known = new Set(["type", "query", "category", "limit", "lang", "pose-id",
     "outfit-id", "pose-query", "outfit-query", "pose-category", "outfit-category",
     "person", "outfit-image", "count", "seed", "out", "out-dir", "background",
-    "labels", "size", ...booleans]);
+    "labels", "size", "describe", "grid-mode", "grid-source", "aspect", ...booleans]);
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
     if (!arg.startsWith("--") || !known.has(arg.slice(2))) throw new Error(`Unknown argument: ${arg}`);
@@ -112,13 +114,19 @@ function shuffled(items, random) {
 function selectCompositions(data, options) {
   const count = number(options.count, 1, 1, 20, "count");
   const random = randomFromSeed(options.seed);
+  const intent = options.describe ? interpret(options.describe) : null;
+  if (intent && !intent.understood.length) {
+    throw new Error(`No supported catalog constraints recognized in --describe: ${options.describe}. Try 春季 站姿 自然 or use category filters.`);
+  }
   const poseOptions = { query: options["pose-query"] || "",
-    category: options["pose-category"] || "", includeDuo: !!options["include-duo"] };
+    category: options["pose-category"] || "",
+    includeDuo: !!options["include-duo"] || !!intent?.includeDuo };
   let poses = findAssets(data, "pose", poseOptions);
   if (options["pose-id"]) {
     poses = data.poses.filter((entry) => entry.id === options["pose-id"]);
     if (!poses.length) throw new Error(`Pose not found: ${options["pose-id"]}`);
   }
+  poses = rank(poses, "pose", intent, random);
   // Draw poses by distinct pose groups, not individual angles.
   const groups = new Map();
   for (const pose of poses) {
@@ -135,16 +143,48 @@ function selectCompositions(data, options) {
     outfits = data.outfits.filter((entry) => entry.id === options["outfit-id"]);
     if (!outfits.length) throw new Error(`Outfit not found: ${options["outfit-id"]}`);
   }
-  if (!groups.size) throw new Error("No matching poses. Try 'search --type pose' or broaden your filters.");
-  if (!outfits.length) throw new Error("No matching outfits. Try 'search --type outfit' or broaden your filters.");
-  const poseKeys = shuffled([...groups.keys()], random);
-  const outfitOrder = shuffled(outfits, random);
+  if (!outfitFile) outfits = rank(outfits, "outfit", intent, random);
+  if (!groups.size) throw new Error("No matching poses after applying exclusions. Try another description or broader filters.");
+  if (!outfits.length) throw new Error("No matching outfits after applying exclusions. Try another description or broader filters.");
+  // Higher-scoring natural language matches first. Without --describe preserve
+  // the previous fully random selection.
+  const poseKeys = intent ? [...groups.keys()] : shuffled([...groups.keys()], random);
+  const outfitOrder = intent ? outfits : shuffled(outfits, random);
   return Array.from({ length: count }, (_, i) => {
     const poseGroup = groups.get(poseKeys[i % poseKeys.length]);
     const pose = poseGroup[Math.floor(random() * poseGroup.length)];
     const outfit = outfitOrder[i % outfitOrder.length];
     return { pose, outfit };
   });
+}
+
+function selectSingles(data, options, count) {
+  const type = options["grid-source"] || "pose";
+  if (!["pose", "outfit"].includes(type)) throw new Error("--grid-source must be pose or outfit");
+  if (options.person || options["outfit-image"]) {
+    throw new Error("Single-image grids do not accept --person or --outfit-image; use --grid-mode pairs");
+  }
+  const intent = options.describe ? interpret(options.describe) : null;
+  if (intent && !intent.understood.length) {
+    throw new Error("No supported constraints recognized in --describe; try 春季 站姿 自然");
+  }
+  const random = randomFromSeed(options.seed);
+  const id = options[type === "pose" ? "pose-id" : "outfit-id"];
+  const mismatch = options[type === "pose" ? "outfit-id" : "pose-id"];
+  if (mismatch) throw new Error(`--${type === "pose" ? "outfit-id" : "pose-id"} does not apply to a ${type} single-image grid`);
+  const filtered = id ? (type === "pose" ? data.poses : data.outfits).filter((x) => x.id === id) :
+    findAssets(data, type, { query: options[type + "-query"] || "",
+      category: options[type + "-category"] || "",
+      includeDuo: !!options["include-duo"] || !!intent?.includeDuo });
+  if (!filtered.length) throw new Error(`No matching ${type} images`);
+  const sorted = intent ? rank(filtered, type, intent, random) : shuffled(filtered, random);
+  const unique = type === "pose" ?
+    [...new Map(sorted.map((item) => [item.pose_key, item])).values()] : sorted;
+  if (!unique.length) throw new Error("No matching images after applying style exclusions");
+  if (unique.length < count && !id) {
+    throw new Error(`Only ${unique.length} unique ${type} references match; ${count} requested. Broaden your filters.`);
+  }
+  return Array.from({ length: count }, (_, i) => unique[i % unique.length]);
 }
 
 function localImage(filename, label) {
@@ -251,7 +291,8 @@ async function compose(data, flags) {
       const prompt = promptFor(data, pose, outfit, person);
       const meta = { ...compositionMeta(data, pairs[i], person, outfitFile),
         image: { width: result.width, height: result.height }, order: ["pose", "outfit",
-        ...(person ? ["person"] : [])], png: dest.png, prompt: dest.prompt };
+        ...(person ? ["person"] : [])], png: dest.png, prompt: dest.prompt,
+        ...(flags.describe ? { selection: selectionInfo(interpret(flags.describe)) } : {}) };
       fs.writeFileSync(dest.png, png, flags.overwrite ? undefined : { flag: "wx" });
       fs.writeFileSync(dest.prompt, prompt + "\n");
       fs.writeFileSync(dest.metadata, JSON.stringify(meta, null, 2) + "\n");
@@ -271,8 +312,26 @@ async function grid(data, flags) {
   if (flags.size !== "4" && flags.size !== "9") {
     throw new Error("grid requires --size 4 or --size 9");
   }
+  const mode = flags["grid-mode"] || "pairs";
+  if (!["pairs", "single"].includes(mode)) {
+    throw new Error("--grid-mode must be pairs or single");
+  }
+  if (mode !== "single" && (flags["grid-source"] || flags.aspect)) {
+    throw new Error("--grid-source and --aspect require --grid-mode single");
+  }
+  if (mode === "single" && flags.aspect && !["square", "portrait"].includes(flags.aspect)) {
+    throw new Error("--aspect must be square or portrait");
+  }
   const count = Number(flags.size);
+  if (mode === "single") return gridSingles(data, flags, count);
   const pairs = selectCompositions(data, { ...flags, count: String(count) });
+  if (!flags["pose-id"] && new Set(pairs.map((p) => p.pose.pose_key)).size !== count) {
+    throw new Error(`Not enough unique pose groups for ${count} panels. Broaden filters or fix --pose-id.`);
+  }
+  if (!flags["outfit-id"] && !flags["outfit-image"] &&
+    new Set(pairs.map((p) => p.outfit.id)).size !== count) {
+    throw new Error(`Not enough unique outfits for ${count} panels. Broaden filters or fix --outfit-id.`);
+  }
   const outdir = flags["out-dir"] || path.join(root, "output", "skill-grids");
   const filename = path.join(outdir, `grid-${count}.png`);
   const dest = outputPaths({ ...flags, out: flags.out || filename }, 1)[0];
@@ -298,10 +357,52 @@ async function grid(data, flags) {
   if (png.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") {
     throw new Error("Grid renderer did not produce a PNG");
   }
-  const metadata = { grid: { size: count, columns: Math.sqrt(count), rows: Math.sqrt(count) },
+  const metadata = { grid: { size: count, columns: Math.sqrt(count), rows: Math.sqrt(count), mode },
     image: { width: rendered.width, height: rendered.height },
     order: ["pose", "outfit", ...(person ? ["person"] : [])],
-    panels, png: dest.png, prompt: dest.prompt };
+    panels, png: dest.png, prompt: dest.prompt,
+    ...(flags.describe ? { selection: selectionInfo(interpret(flags.describe)) } : {}) };
+  fs.mkdirSync(path.dirname(dest.png), { recursive: true });
+  fs.writeFileSync(dest.png, png, flags.overwrite ? undefined : { flag: "wx" });
+  fs.writeFileSync(dest.prompt, prompt + "\n");
+  fs.writeFileSync(dest.metadata, JSON.stringify(metadata, null, 2) + "\n");
+  return metadata;
+}
+
+async function gridSingles(data, flags, count) {
+  const type = flags["grid-source"] || "pose";
+  const selected = selectSingles(data, flags, count);
+  const outdir = flags["out-dir"] || path.join(root, "output", "skill-grids");
+  const defaultFile = path.join(outdir, `grid-${count}-single-${type}.png`);
+  const dest = outputPaths({ ...flags, out: flags.out || defaultFile }, 1)[0];
+  const occupied = Object.values(dest).find((file) => fs.existsSync(file));
+  if (occupied && !flags.overwrite) {
+    throw new Error(`Output already exists: ${occupied}. Use --overwrite or choose another path.`);
+  }
+  const pairs = selected.map((entry) => ({ pose: type === "pose" ? entry : null,
+    outfit: type === "outfit" ? entry : null }));
+  const assets = await prepareAssets(pairs);
+  const entries = selected.map((item) => ({ path: item.original, id: item.id }));
+  const result = await render(read("composition.js"), {}, async (_draw, _drawGrid, drawSingle) =>
+    drawSingle(entries, { background: flags.background || "white",
+      labels: flags.labels !== "false", aspect: flags.aspect || "square" }), assets);
+  const png = Buffer.from(result.base64, "base64");
+  if (png.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") {
+    throw new Error("Single grid did not produce a PNG");
+  }
+  const panels = selected.map((item, i) => ({
+    cell: i + 1, row: Math.floor(i / Math.sqrt(count)) + 1,
+    column: i % Math.sqrt(count) + 1, id: item.id,
+    category: data.i18n.label(item, "category"), type
+  }));
+  const intro = type === "pose" ? "姿势" : "服装";
+  const prompt = `这是一张${count}格${intro}素材对比图，每格是一张独立参考图片，依照从左到右、从上到下的格子编号选择需要的素材。\n\n` +
+    panels.map((panel) => `第${panel.cell}格：${panel.id}（${panel.category}）`).join("\n");
+  const metadata = { grid: { size: count, columns: Math.sqrt(count), rows: Math.sqrt(count),
+      mode: "single", source: type, aspect: flags.aspect || "square" },
+    image: { width: result.width, height: result.height }, panels,
+    png: dest.png, prompt: dest.prompt,
+    ...(flags.describe ? { selection: selectionInfo(interpret(flags.describe)) } : {}) };
   fs.mkdirSync(path.dirname(dest.png), { recursive: true });
   fs.writeFileSync(dest.png, png, flags.overwrite ? undefined : { flag: "wx" });
   fs.writeFileSync(dest.prompt, prompt + "\n");
@@ -317,6 +418,9 @@ const help = `AI Reference Gallery Skill (Node.js 22+)
           [--person FILE] [--count 1..20] [--seed STRING] [--background white|soft]
           [--labels true|false] [--lang zh-CN|en|ja] [--out FILE.png | --out-dir DIR] [--overwrite]
   grid --size 4|9 [the same pose, outfit, person, filters, seed, background, labels and output flags as compose]
+  grid --size 4|9 --grid-mode single --grid-source pose|outfit [--aspect square|portrait]
+  compose|grid --describe "春季日常站姿，不要性感风格" [other flags]
+  doctor       Check Node.js, Chrome/Edge, bundled runtime and cache access without network
 No gallery clone required: the skill contains catalogs and fetches selected original images on demand.
 Images are cached under ~/.cache/ai-reference-gallery (override with AI_REFERENCE_CACHE_DIR).
 Default output directory: ./output/skill-compositions (relative to current working directory)
@@ -327,11 +431,22 @@ PNG export requires an installed Chrome/Edge browser. Set CHROME_PATH if needed.
 async function main(argv) {
   const { command, flags } = parseArgs(argv);
   if (command === "help" || command === "--help") return console.log(help);
+  if (command === "doctor") {
+    const report = diagnostics(skillRoot);
+    console.log(JSON.stringify(report, null, 2));
+    if (!report.ok) process.exitCode = 1;
+    return;
+  }
   const data = catalogs(flags.lang || "zh-CN");
   if (command === "search") {
     const type = flags.type || "pose";
-    const results = findAssets(data, type, {
+    const intent = flags.describe ? interpret(flags.describe) : null;
+    if (intent && !intent.understood.length) {
+      throw new Error("No supported constraints recognized in --describe; try 春季 站姿 自然");
+    }
+    const candidates = findAssets(data, type, {
       query: flags.query, category: flags.category, includeDuo: !!flags["include-duo"] });
+    const results = intent ? rank(candidates, type, intent, randomFromSeed(flags.seed)) : candidates;
     const limit = number(flags.limit, 10, 1, 100, "limit");
     const items = results.slice(0, limit).map((item) => ({
       id: item.id, category: data.i18n.label(item, "category"),
@@ -339,7 +454,8 @@ async function main(argv) {
         angle: data.i18n.label(item, "angle"), poseKey: item.pose_key } : {}),
       thumbnail: item.thumbnail
     }));
-    return console.log(JSON.stringify({ total: results.length, items }, null, 2));
+    return console.log(JSON.stringify({ total: results.length, items,
+      ...(intent ? { selection: selectionInfo(intent) } : {}) }, null, 2));
   }
   if (command === "categories") {
     const type = flags.type || "pose";
@@ -361,5 +477,5 @@ if (require.main === module) main(process.argv.slice(2)).catch((error) => {
   process.exitCode = 1;
 });
 
-module.exports = { catalogs, matches, findAssets, selectCompositions, promptFor,
-  gridPrompt, parseArgs, main };
+module.exports = { catalogs, matches, findAssets, selectCompositions, selectSingles,
+  promptFor, gridPrompt, parseArgs, main };
