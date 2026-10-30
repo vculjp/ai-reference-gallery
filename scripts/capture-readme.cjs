@@ -88,7 +88,7 @@ async function main() {
     await evaluate(`window.scrollTo(0, ${scrollY})`);
     // Offscreen lazy-loaded images may never request data while the page stays at the top.
     await evaluate(`Promise.race([
-      Promise.all([...document.querySelectorAll('.card img, .compose-slot img')].filter(img => {
+      Promise.all([...document.querySelectorAll('.card img, .compose-slot img, .compose-grid-tiles img, .compose-grid-person-preview img')].filter(img => {
         const bounds=img.getBoundingClientRect();
         return bounds.top < innerHeight && bounds.bottom > 0;
       }).map(img => img.complete ? true : new Promise(r => {
@@ -133,25 +133,33 @@ async function main() {
   }
   await shot("portrait.jpg");
 
-  await evaluate(`document.querySelector('#type-pose').click();
-    [...document.querySelectorAll('#series button')].find(x=>/标准/.test(x.textContent))?.click();
-    document.querySelector('.card').click();
-    document.querySelector('#add-to-compose').click();
-    document.querySelector('#category').value='spring';
-    document.querySelector('#category').dispatchEvent(new Event('change',{bubbles:true}));
-    document.querySelector('.card').click();
-    document.querySelector('#add-to-compose').click();`);
-  if (await evaluate("document.querySelector('#compose-panel').hidden")) {
-    throw new Error("Composition panel did not open.");
+  // Capture a genuine, newly randomized 2×2 grid from the website, rather
+  // than placing a static sample or manually duplicating source images.
+  await resize(1440, 1130);
+  await evaluate(`document.querySelector('#type-compose').click();
+    document.querySelector('#compose-mode-four').click();
+    document.querySelector('#compose-grid-shuffle').click();`);
+  const selections = await evaluate(`(() => {
+    const tiles = [...document.querySelectorAll('#compose-grid-tiles .compose-grid-tile')];
+    const poses = tiles.map(tile => tile.querySelector('.compose-grid-pose img')?.alt);
+    const outfits = tiles.map(tile => tile.querySelector('.compose-grid-outfit img')?.alt);
+    return { count: tiles.length, poses, outfits };
+  })()`);
+  if (selections.count !== 4 ||
+      new Set(selections.poses).size !== 4 ||
+      new Set(selections.outfits).size !== 4 ||
+      [...selections.poses, ...selections.outfits].some((id) => !id)) {
+    throw new Error("Random four-grid must contain 4 distinct pose and outfit images.");
   }
-  await resize(1440, 1024);
-  await sleep(800);
-  await shot("compose.jpg", 260);
-
-  await resize(390, 844, true);
-  await evaluate(`document.querySelector('#type-pose').click();
-    [...document.querySelectorAll('#series button')].find(x=>/标准/.test(x.textContent))?.click();`);
-  await shot("mobile.jpg", 365);
+  const gridScrollY = await evaluate(`(() => {
+    const panel = document.querySelector('#compose-grid-panel');
+    return Math.max(0, Math.floor(scrollY + panel.getBoundingClientRect().top - 20));
+  })()`);
+  await shot("four-grid.jpg", gridScrollY);
+  const imagesLoaded = await evaluate(`[...document.querySelectorAll('#compose-grid-tiles img')]
+    .every(img => img.complete && img.naturalWidth > 0)`);
+  if (!imagesLoaded) throw new Error("Four-grid screenshots would contain missing thumbnails.");
+  console.log("Four-grid random references: " + JSON.stringify(selections));
 }
 
 main().catch((err) => {

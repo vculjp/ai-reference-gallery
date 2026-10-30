@@ -5,13 +5,15 @@
 
 [在线体验](https://gallery.zsj.pp.ua/) · [GitHub 源码](https://github.com/vculjp/ai-reference-gallery) · [作者 X @vculjp](https://x.com/vculjp)
 
-![AI Reference Gallery 组合制作工作台](docs/compose.jpg)
+## 页面预览
 
-### 新增：脸部与造型图库
+| 脸部素材页 | 姿势库素材页 |
+| :---: | :---: |
+| ![脸部素材页：Face 与 Styling 素材浏览](docs/portrait.jpg) | ![姿势库素材页：分类与多角度姿势参考](docs/preview.jpg) |
+| **服饰素材页** | **随机四宫格素材页** |
+| ![服饰素材页：按分类浏览服装参考](docs/costumes.jpg) | ![随机四宫格素材页：四组不重复的姿势与服装参考](docs/four-grid.jpg) |
 
-收录 **1,499 张脸部与造型参考图**（Face 893 / Styling 606），可按发型、用途筛选，也可直接选为双图／三图或宫格里的统一人物参考。
-
-![脸部图库实际页面截图：Face 与 Styling 素材浏览](docs/portrait.jpg)
+四宫格图来自网页真实的「**重新随机全部**」功能：每次从图库中随机抽取 **4 组不同姿势＋4 套不同服饰**，每格展示一组完整搭配；上图是其中一次随机生成的页面截图。你可以在 [在线体验](https://gallery.zsj.pp.ua/) 中重新随机，获取不同组合。
 
 ## 主要功能
 
@@ -26,33 +28,6 @@
 | **多语言与离线** | 简体中文、English、日本語；网页使用原生 HTML / CSS / JavaScript，无后端依赖 |
 
 网页宫格输出：四宫格 **2048×2048**，九宫格 **3072×3072**。统一人物参考可以从脸库随机选择、手动选择，或上传自己的照片；上传的照片只在浏览器本地参与拼图。导出的是**创作参考板**，并非 AI 生成的最终人物图。
-
-## 效果图
-
-<details>
-<summary>展开查看姿势、服装图库及手机端</summary>
-
-**姿势图库**
-
-![姿势图库](docs/preview.jpg)
-
-**服装图库**
-
-![服装图库](docs/costumes.jpg)
-
-**手机端**
-
-![手机端图库](docs/mobile.jpg)
-
-</details>
-
-**Agent Skill 组合四宫格**
-
-![四组姿势与服装组合](docs/skill-four-grid.jpg)
-
-**Agent Skill 组合九宫格**
-
-![九组不重复的姿势与服装搭配](docs/skill-nine-grid.jpg)
 
 ## 网页怎么用
 
