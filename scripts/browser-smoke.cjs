@@ -95,12 +95,14 @@ async function main() {
       const f = filters.getBoundingClientRect();
       const t = toolbar.getBoundingClientRect();
       result[tab] = {
+        compact: toolbar.classList.contains('is-compact'),
         seriesVisible: !series.hidden,
         sameRow: series.hidden || Math.abs((a.top + a.height / 2) -
           (b.top + b.height / 2)) < 2,
         rowContainsBoth: series.parentElement === summary.parentElement,
         sideBySide: f.right + 8 < b.left && f.right + 8 < a.left + (series.hidden ? 10000 : 0) &&
           f.left >= t.left - 2 && b.right <= t.right + 2,
+        filtersAboveInfo: f.bottom + 8 <= b.top,
         controlFits: [...filters.querySelectorAll('input,select')].every(el =>
           el.getBoundingClientRect().right <= f.right - 5)
       };
@@ -120,8 +122,13 @@ async function main() {
       tab + " series and result summary must share one toolbar");
     assert.equal(filterToolbarLayout[tab].sameRow, true,
       tab + " series and result summary must align on one desktop row");
-    assert.equal(filterToolbarLayout[tab].sideBySide, true,
-      tab + " filters and series/results should sit side-by-side in one toolbar");
+    const compact = tab === 'costume' || tab === 'portrait';
+    assert.equal(filterToolbarLayout[tab].compact, compact,
+      tab + " must only use the compact layout on costume/portrait tabs");
+    assert.equal(filterToolbarLayout[tab].sideBySide, compact,
+      tab + " side-by-side layout should match the intended tab");
+    assert.equal(filterToolbarLayout[tab].filtersAboveInfo, !compact,
+      tab + " original two-row layout should remain on pose/depth");
     assert.equal(filterToolbarLayout[tab].controlFits, true,
       tab + " filter controls must fit inside the compact toolbar");
   }

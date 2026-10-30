@@ -215,6 +215,9 @@ function closeImage() {
 }
 function refreshStaticText() {
   document.documentElement.lang = i18n.locale;
+  // Only outfit and portrait browsing use the compact single-row toolbar.
+  document.querySelector(".browser-toolbar").classList.toggle(
+    "is-compact", state.type === "costume" || state.type === "portrait");
   for (const [id, key] of Object.entries({
     eyebrow: "eyebrow", tagline: "tagline", description: "description",
     "search-label": "searchLabel", "category-label": "categoryLabel", "angle-label": "angleLabel",
