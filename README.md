@@ -7,6 +7,12 @@
 
 ![AI Reference Gallery 组合制作工作台](docs/compose.jpg)
 
+### 新增：脸部与造型图库
+
+收录 **1,499 张脸部与造型参考图**（Face 893 / Styling 606），可按发型、用途筛选，也可直接选为双图／三图或宫格里的统一人物参考。
+
+![脸部图库实际页面截图：Face 与 Styling 素材浏览](docs/portrait.jpg)
+
 ## 主要功能
 
 | 模块 | 能做什么 |
@@ -24,7 +30,7 @@
 ## 效果图
 
 <details>
-<summary>展开查看姿势、服装、脸部图库及手机端</summary>
+<summary>展开查看姿势、服装图库及手机端</summary>
 
 **姿势图库**
 
@@ -33,10 +39,6 @@
 **服装图库**
 
 ![服装图库](docs/costumes.jpg)
-
-**脸部图库**
-
-![脸部与造型参考图库](docs/portrait.jpg)
 
 **手机端**
 
