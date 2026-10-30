@@ -82,6 +82,13 @@ async function main() {
       }
       return result.result.value;
     }
+    async function chromeCommand(method, params) {
+      const requestId = ++id;
+      return new Promise((resolve, reject) => {
+        pending.set(requestId, {resolve, reject});
+        ws.send(JSON.stringify({id: requestId, method, params}));
+      });
+    }
     let loaded = false;
     for (let i = 0; i < 70; i++) {
       loaded = await evaluate("document.readyState === 'complete' && !!document.querySelector('#grid .card')");
@@ -89,6 +96,51 @@ async function main() {
       await sleep(100);
     }
     assert.ok(loaded, "Gallery did not initialize");
+    // Regression: the undo toolbar must span a separate row, not an image column.
+    for (const width of [1440, 960, 390]) {
+      await chromeCommand("Emulation.setDeviceMetricsOverride",
+        {width, height:900, deviceScaleFactor:1, mobile:false});
+      const boxes = await evaluate(`(() => {
+        document.getElementById("type-compose").click();
+        const rect = (selector) => {
+          const r = document.querySelector(selector).getBoundingClientRect();
+          return {x:r.x, y:r.y, right:r.right, bottom:r.bottom, width:r.width, height:r.height};
+        };
+        return {
+          toolbar:rect(".compose-reference-toolbar"),
+          panel:rect(".compose-workbench"),
+          pose:rect(".compose-selection .compose-slot:first-child"),
+          outfit:rect(".compose-selection .compose-slot:last-child"),
+          editor:rect(".compose-editor"),
+          poseImage:rect("#compose-pose-preview"),
+          poseActions:rect(".compose-selection .compose-slot:first-child .compose-slot-actions"),
+          docWidth:document.documentElement.scrollWidth
+        };
+      })()`);
+      const {toolbar, panel, pose, outfit, editor, poseImage, poseActions, docWidth} = boxes;
+      assert.ok(toolbar.bottom <= pose.y + 2 && toolbar.bottom <= outfit.y + 2 &&
+        toolbar.bottom <= editor.y + 2, `Toolbar overlaps cards at ${width}: ${JSON.stringify(boxes)}`);
+      assert.ok(pose.width > 190 && outfit.width > 190 && editor.width > 190 &&
+        pose.x >= panel.x - 2 && pose.right <= panel.right + 2 &&
+        outfit.right <= panel.right + 2 && editor.right <= panel.right + 2 &&
+        docWidth <= width + 4, `Card overflow at ${width}: ${JSON.stringify(boxes)}`);
+      assert.ok(poseImage.height <= 425 && poseActions.y >= poseImage.bottom &&
+        poseActions.bottom <= pose.bottom + 2,
+        `Preview stretched and displaced its controls at ${width}: ${JSON.stringify(boxes)}`);
+      if (width > 1020) {
+        assert.ok(pose.y === outfit.y && pose.y === editor.y &&
+          pose.right < outfit.x && outfit.right < editor.x,
+          `Desktop cards should align in three columns: ${JSON.stringify(boxes)}`);
+      } else if (width > 560) {
+        assert.ok(pose.y === outfit.y && pose.right < outfit.x &&
+          editor.y >= pose.bottom && editor.y >= outfit.bottom,
+          `Tablet cards should appear above editor: ${JSON.stringify(boxes)}`);
+      } else {
+        assert.ok(outfit.y >= pose.bottom && editor.y >= outfit.bottom,
+          `Mobile cards should stack vertically: ${JSON.stringify(boxes)}`);
+      }
+    }
+    await chromeCommand("Emulation.clearDeviceMetricsOverride", {});
     const details = await evaluate(`(async () => {
       const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
       const get = (id) => document.getElementById(id);
