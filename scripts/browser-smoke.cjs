@@ -79,7 +79,7 @@ async function main() {
   await command("Emulation.setDeviceMetricsOverride", {
     width: 1440, height: 900, deviceScaleFactor: 1, mobile: false
   });
-  assert.match(await evalJs("document.querySelector('#counts').textContent"), /4345/);
+  assert.match(await evalJs("document.querySelector('#counts').textContent"), /5784/);
   assert.equal(await evalJs("getComputedStyle(document.body).backgroundColor"), "rgb(245, 245, 247)");
   assert.equal(await evalJs("document.querySelector('#tagline').textContent"), "灵感，从这里开始。");
   // Random drawing must work directly on an empty composition, without visiting either gallery.
@@ -130,9 +130,10 @@ async function main() {
   assert.ok(Math.abs(desktopLayout.first.w - desktopLayout.second.w) < 2 &&
     Math.abs(desktopLayout.first.w - desktopLayout.editor.w) < 2,
     "All three cards must be equal width");
-  assert.ok(Math.abs(desktopLayout.first.h - desktopLayout.second.h) < 2 &&
-    Math.abs(desktopLayout.first.h - desktopLayout.editor.h) < 2,
-    "All three cards must be equal height");
+  assert.ok(desktopLayout.cover.h >= 220 && desktopLayout.cover.h <= 425 &&
+    desktopLayout.first.h >= desktopLayout.cover.h &&
+    desktopLayout.editor.h > 0,
+    "Reference previews should stay compact rather than stretch to the taller settings card");
   assert.ok(desktopLayout.second.x >= desktopLayout.first.right - 1 &&
     desktopLayout.editor.x >= desktopLayout.second.right - 1,
     "Cards should appear side by side in pose / outfit / settings order");
@@ -260,7 +261,7 @@ async function main() {
       status:bounds('#compose-grid-status'),
       actions:bounds('.compose-grid-actions'),
       firstAction:bounds('#compose-grid-preview'),
-      lastAction:bounds('#compose-grid-download'),
+      lastAction:bounds('#compose-grid-download-panels'),
       chooseInside:document.querySelector('.compose-grid-face-card').contains(
         document.querySelector('#compose-grid-choose-person')),
       shuffleInside:document.querySelector('.compose-grid-sidebar').contains(
@@ -282,10 +283,10 @@ async function main() {
     "Face and settings cards should be exactly the same height");
   assert.ok(gridDesktop.status.bottom < gridDesktop.gallery.bottom,
     "Grid status belongs inside the aligned gallery card");
-  assert.ok(gridDesktop.actions.h >= 130 && gridDesktop.actions.h < 175 &&
+  assert.ok(gridDesktop.actions.h >= 180 && gridDesktop.actions.h < 280 &&
     gridDesktop.lastAction.bottom < gridDesktop.settings.bottom,
-    "Export controls should use compact spacing without empty vertical stretches");
-  assert.ok(gridDesktop.firstAction.y < gridDesktop.lastAction.y - 90,
+    "All four export controls should fit without empty vertical stretches");
+  assert.ok(gridDesktop.firstAction.y < gridDesktop.lastAction.y - 120,
     "Export actions should be evenly distributed rather than clustered at the bottom");
   assert.ok(gridDesktop.chooseInside && gridDesktop.shuffleInside &&
     gridDesktop.promptInside && gridDesktop.downloadInside);
@@ -354,7 +355,7 @@ async function main() {
   assert.equal(await evalJs("document.querySelectorAll('.compose-grid-tile-code').length"), 8);
   assert.equal(await evalJs("document.querySelector('#compose-grid-preview').disabled"), false);
   const firstGrid = await evalJs("state.composition.gridItems.map(x=>[x.pose.pose_key,x.outfit.id])");
-  await evalJs("document.querySelector('.compose-grid-tile').click()");
+  await evalJs("document.querySelector('.compose-grid-tile .compose-grid-reroll-pair').click()");
   const updatedFourPrompt = await evalJs("document.querySelector('#compose-grid-prompt-text').value");
   assert.notEqual(updatedFourPrompt,fourPrompt,"Rerolling one cell must refresh its prompt entry");
   assert.equal(await evalJs("state.composition.person.id"),sharedFaceBefore,
@@ -816,7 +817,7 @@ async function main() {
   assert.equal(await evalJs("document.querySelector('#compose-panel').hidden"), false);
   assert.equal(await evalJs("document.querySelector('.compose-editor').contains(document.querySelector('.compose-person-slot'))"), true);
   assert.equal(await evalJs("(()=>{const b=document.querySelector('#compose-download').getBoundingClientRect(),c=document.querySelector('#compose-copy-image').getBoundingClientRect(),p=document.querySelector('#compose-open-preview').getBoundingClientRect();return b.right<=innerWidth&&c.left>=0&&p.right<=innerWidth})()"), true);
-  assert.equal(await evalJs("(()=>{const e=document.querySelector('.compose-editor').getBoundingClientRect(),one=document.querySelector('.compose-selection .compose-slot:first-child').getBoundingClientRect(),two=document.querySelector('.compose-selection .compose-slot:nth-of-type(2)').getBoundingClientRect();return e.top>=Math.max(one.bottom,two.bottom)-2&&two.left>=one.right})()"), true);
+  assert.equal(await evalJs("(()=>{const e=document.querySelector('.compose-editor').getBoundingClientRect(),one=document.querySelector('.compose-selection .compose-slot:first-child').getBoundingClientRect(),two=document.querySelector('.compose-selection .compose-slot:nth-of-type(2)').getBoundingClientRect();return two.top>=one.bottom-2&&e.top>=two.bottom-2&&one.left>=0&&e.right<=innerWidth})()"), true);
   assert.equal(await evalJs("document.documentElement.scrollWidth <= window.innerWidth"), true);
   assert.equal(await evalJs("['compose-random-outfit-filter','compose-random-pose-filter','compose-copy-prompt'].every(id=>document.getElementById(id).getBoundingClientRect().width>0)"), true);
   assert.equal(await evalJs("['compose-random-pair','compose-random-pose','compose-random-costume'].every(id=>{const r=document.getElementById(id).getBoundingClientRect();return r.width>0&&r.right<=window.innerWidth})"), true);
