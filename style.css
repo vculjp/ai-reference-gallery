@@ -227,11 +227,24 @@ main { padding-block: 31px 95px; }
   grid-template-columns: minmax(250px, 2fr) repeat(3, minmax(145px, 1fr));
   align-items: end;
   gap: 14px;
-  padding: 22px 24px;
+  padding: 16px 24px;
   border: 1px solid var(--line);
   border-radius: 20px;
   background: var(--surface);
   box-shadow: var(--shadow);
+}
+/* Keep translated filter names available to screen readers, but omit the
+   redundant visible headings above inputs on every gallery/composition tab. */
+.filter-label-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 .filters:has(#angle-filter[hidden]) {
   grid-template-columns: minmax(250px, 1fr) minmax(220px, 300px);

@@ -82,8 +82,34 @@ async function main() {
   assert.match(await evalJs("document.querySelector('#counts').textContent"), /5784/);
   assert.equal(await evalJs("getComputedStyle(document.body).backgroundColor"), "rgb(245, 245, 247)");
   assert.equal(await evalJs("document.querySelector('#tagline').textContent"), "灵感，从这里开始。");
+  // Filter captions are visually removed across all tabs; labels remain
+  // in the DOM for accessible names and the existing locale switching.
+  const captionsHidden = await evalJs(`(() => {
+    const browserIds = ['search-label','category-label','angle-label','view-label'];
+    const compositionIds = [
+      'compose-random-outfit-filter-label','compose-random-pose-filter-label',
+      'compose-random-portrait-section-label','compose-random-portrait-hair-label'
+    ];
+    const visuallyHidden = id => {
+      const el = document.getElementById(id);
+      const rect = el.getBoundingClientRect();
+      return getComputedStyle(el).position === 'absolute' &&
+        rect.width <= 1 && rect.height <= 1;
+    };
+    const results = ['pose','costume','portrait','depth'].map(tab => {
+      document.getElementById('type-' + tab).click();
+      return browserIds.every(visuallyHidden) &&
+        document.getElementById('query').getBoundingClientRect().height > 35;
+    });
+    document.getElementById('type-compose').click();
+    results.push(compositionIds.every(visuallyHidden) &&
+      document.getElementById('compose-random-outfit-filter').getBoundingClientRect().height > 30 &&
+      document.getElementById('compose-random-duo-label').getBoundingClientRect().height > 0);
+    return results;
+  })()`);
+  assert.deepEqual(captionsHidden, [true,true,true,true,true],
+    "All gallery and composition tabs must hide redundant filter captions, not their controls");
   // Random drawing must work directly on an empty composition, without visiting either gallery.
-  await evalJs("document.querySelector('#type-compose').click()");
   assert.equal(await evalJs("document.querySelector('#compose-preview-overlay').hidden"), true);
   assert.equal(await evalJs("document.querySelector('#compose-open-preview').disabled"), true);
   const compactActions = await evalJs(`(()=>{
