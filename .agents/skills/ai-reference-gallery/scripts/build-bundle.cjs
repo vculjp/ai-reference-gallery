@@ -23,22 +23,23 @@ function source(file) {
   // Stable across Windows checkout CRLF and Linux checkout LF.
   return contents.replace(/\r\n/g, "\n");
 }
-const src = Object.fromEntries(["catalog.js", "costume-catalog.js", "portrait-catalog.js",
+const src = Object.fromEntries(["catalog.js", "depth-catalog.js", "costume-catalog.js", "portrait-catalog.js",
   "i18n.js", "composition.js"].map((file) => [file, source(file)]));
 const context = { window: {} };
-for (const file of ["catalog.js", "costume-catalog.js", "portrait-catalog.js"]) {
+for (const file of ["catalog.js", "depth-catalog.js", "costume-catalog.js", "portrait-catalog.js"]) {
   vm.runInNewContext(src[file], context, { filename: file, timeout: 2000 });
 }
 
 const pose = JSON.parse(JSON.stringify(context.window.POSE_GALLERY_CATALOG));
+const depth = JSON.parse(JSON.stringify(context.window.DEPTH_GALLERY_CATALOG));
 const outfit = JSON.parse(JSON.stringify(context.window.COSTUME_GALLERY_CATALOG));
 const portrait = JSON.parse(JSON.stringify(context.window.PORTRAIT_GALLERY_CATALOG))
   .map((item) => ({ ...item,
     original: `img/portrait/original/${item.id}.png` }));
 const manifest = checkManifest({
-  schemaVersion, source: ["catalog.js", "costume-catalog.js", "portrait-catalog.js"],
-  counts: { pose: pose.length, outfit: outfit.length, portrait: portrait.length },
-  collections: { pose, outfit, portrait }
+  schemaVersion, source: ["catalog.js", "depth-catalog.js", "costume-catalog.js", "portrait-catalog.js"],
+  counts: { pose: pose.length, depth: depth.length, outfit: outfit.length, portrait: portrait.length },
+  collections: { pose, depth, outfit, portrait }
 });
 const data = zlib.gzipSync(Buffer.from(JSON.stringify(manifest)), { level: 9 });
 const runtime = zlib.gzipSync(Buffer.from(JSON.stringify({
@@ -65,4 +66,4 @@ for (const [target, bytes] of outputs) {
     fs.writeFileSync(target, bytes);
   }
 }
-console.log(`${flags.has("--check") ? "Verified" : "Generated"} Catalog v${schemaVersion}: ${pose.length} poses, ${outfit.length} outfits, ${portrait.length} portraits; manifest ${data.length} bytes, runtime ${runtime.length} bytes`);
+console.log(`${flags.has("--check") ? "Verified" : "Generated"} Catalog v${schemaVersion}: ${pose.length} poses, ${depth.length} depth, ${outfit.length} outfits, ${portrait.length} portraits; manifest ${data.length} bytes, runtime ${runtime.length} bytes`);

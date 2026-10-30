@@ -4,12 +4,12 @@ const i18n = window.ReferenceGalleryI18n;
 const t = (key, ...args) => i18n.t(key, ...args);
 const label = (item, field) => i18n.label(item, field);
 const state = {
-  type: "pose", poseImages: [], costumeImages: [], portraitImages: [], images: [], records: [], cards: [],
+  type: "pose", poseImages: [], depthImages: [], costumeImages: [], portraitImages: [], images: [], records: [], cards: [],
   series: "", category: "", angle: "", search: "", view: "pose",
   portraitSection: "", portraitTarget: "reference",
   visibleCount: 60, current: -1, selected: null,
   composition: {
-    pose: null, second: null, person: null, background: "white", labels: true,
+    pose: null, depth: null, referenceType: "pose", second: null, person: null, background: "white", labels: true,
     mode: "reference", gridItems: [],
     gridBackground: "white", gridLabels: true, gridUsePerson: false
   }
@@ -25,6 +25,7 @@ const composeUI = window.ReferenceCompositionUI({
   state, t, label, $, element,
   composition: window.ReferenceComposition,
   choosePose: () => switchType("pose"),
+  chooseDepth: () => switchType("depth"),
   chooseCostume: () => switchType("costume"),
   choosePortrait: (target) => {
     state.portraitTarget = target;
@@ -45,7 +46,7 @@ function preferred(card) {
     card.images[0];
 }
 function updateSeries() {
-  $("series").hidden = !["pose", "portrait"].includes(state.type);
+  $("series").hidden = !["pose", "depth", "portrait"].includes(state.type);
   if (state.type === "portrait") {
     $("series").replaceChildren(...["", "face", "styling"].map((section) => {
       const button = element("button", state.portraitSection === section ? "active" : "",
@@ -56,7 +57,7 @@ function updateSeries() {
     }));
     return;
   }
-  if (state.type !== "pose") return;
+  if (!["pose", "depth"].includes(state.type)) return;
   const names = ["", ...uniq(state.images.map((d) => d.series))];
   $("series").replaceChildren(...names.map((name) => {
     const localized = state.images.find((d) => d.series === name);
@@ -79,9 +80,9 @@ function updateCategories() {
   selector.value = state.category;
 }
 function updateAngles() {
-  $("angle-filter").hidden = state.type !== "pose";
-  $("view-filter").hidden = state.type !== "pose";
-  if (state.type !== "pose") return;
+  $("angle-filter").hidden = !["pose", "depth"].includes(state.type);
+  $("view-filter").hidden = !["pose", "depth"].includes(state.type);
+  if (!["pose", "depth"].includes(state.type)) return;
   const selector = $("angle");
   selector.replaceChildren(new Option(t("allAngles"), ""), ...uniq(state.images.map((d) => d.angle)).map((angle) =>
     new Option(label(state.images.find((d) => d.angle === angle), "angle"), angle)));
@@ -106,7 +107,8 @@ function createCard(card, index) {
   root.setAttribute("role", "button");
   const cover = element("div", "cover");
   const image = element("img");
-  image.loading = "lazy"; image.decoding = "async"; image.src = active.thumbnail;
+  image.loading = "lazy"; image.decoding = "async";
+  image.src = window.ReferenceComposition.imageUrl(active.thumbnail);
   image.alt = portrait ? t("portraitName", t(active.section === "face" ? "portraitFace" : "portraitStyling"), label(active, "category"))
     : costume ? t("costumeName", label(active, "category"), active.id)
     : label(active, "pose_name") + " / " + label(active, "angle");
@@ -128,7 +130,7 @@ function createCard(card, index) {
   if (!costume && !portrait && card.images.length > 1) {
     const strip = element("div", "strip");
     for (const img of card.images.slice(0, 5)) {
-      const small = element("img"); small.loading = "lazy"; small.src = img.thumbnail;
+      const small = element("img"); small.loading = "lazy"; small.src = window.ReferenceComposition.imageUrl(img.thumbnail);
       small.title = label(img, "angle"); small.alt = label(img, "angle"); strip.append(small);
     }
     info.append(strip);
@@ -142,7 +144,7 @@ function render() {
   if (state.type === "compose") return;
   updateSeries();
   state.records = state.images.filter(matches);
-  if (state.type === "pose" && state.view === "pose") {
+  if (["pose", "depth"].includes(state.type) && state.view === "pose") {
     const keys = new Set(state.records.map((x) => x.pose_key));
     state.cards = groupImages(state.images.filter((x) => keys.has(x.pose_key)));
   } else {
@@ -179,11 +181,13 @@ function drawImage() {
     ? t("costumeName", label(image, "category"), image.id) : label(image, "pose_name");
   $("imageMeta").textContent = portrait ? image.style || label(image, "category") : costume ? image.keywords
     : ["series", "category", "angle"].map((field) => label(image, field)).join(" / ");
-  $("largeImage").src = costume ? image.preview : image.original;
+  $("largeImage").src = window.ReferenceComposition.imageUrl(costume ? image.preview : image.original);
   $("largeImage").alt = $("poseTitle").textContent;
-  $("download").href = image.original;
+  $("download").href = window.ReferenceComposition.imageUrl(image.original);
   $("download").download = image.id + (image.original.toLowerCase().endsWith(".svg") ? ".svg" : ".png");
-  $("add-to-compose").textContent = t(portrait ? "addPortrait" : state.type === "pose" ? "addPose" : "addCostume");
+  $("add-to-compose").textContent = t(portrait ? "addPortrait" : state.type === "depth" ? "addDepth" : state.type === "pose" ? "addPose" : "addCostume");
+  $("toggle-pose-depth").hidden = !["pose", "depth"].includes(state.type);
+  $("toggle-pose-depth").textContent = t(state.type === "pose" ? "viewMatchingDepth" : "viewMatchingPose");
   $("position").textContent = (state.current + 1) + " / " + state.cards.length;
   $("angles").hidden = costume || portrait;
   $("angles").replaceChildren(...(costume || portrait ? [] : card.images.map((item) => {
@@ -199,7 +203,7 @@ function shiftPose(n) {
   state.selected = preferred(state.cards[state.current]); drawImage();
 }
 function shiftAngle(n) {
-  if (state.type !== "pose") return shiftPose(n);
+  if (!["pose", "depth"].includes(state.type)) return shiftPose(n);
   const card = state.cards[state.current];
   if (!card) return;
   const images = card.images;
@@ -221,7 +225,7 @@ function refreshStaticText() {
   document.title = t("pageTitle");
   $("collection-eyebrow").textContent = t("collectionEyebrow");
   $("collection-title").textContent = t(state.type === "compose" ? "collectionCompose" :
-    state.type === "portrait" ? "collectionPortrait" : state.type === "costume" ? "collectionCostume" : "collectionPose");
+    state.type === "depth" ? "collectionDepth" : state.type === "portrait" ? "collectionPortrait" : state.type === "costume" ? "collectionCostume" : "collectionPose");
   $("type-tabs").setAttribute("aria-label", t("typeNav"));
   $("social-nav").setAttribute("aria-label", t("socialNav"));
   $("footer-social-nav").setAttribute("aria-label", t("socialNav"));
@@ -230,16 +234,23 @@ function refreshStaticText() {
   $("type-pose").textContent = t("typePose");
   $("type-costume").textContent = t("typeCostume");
   $("type-portrait").textContent = t("typePortrait");
+  $("type-depth").textContent = t("typeDepth");
   $("type-compose").textContent = t("typeCompose");
   $("type-pose").classList.toggle("active", state.type === "pose");
   $("type-costume").classList.toggle("active", state.type === "costume");
   $("type-portrait").classList.toggle("active", state.type === "portrait");
+  $("type-depth").classList.toggle("active", state.type === "depth");
   $("type-compose").classList.toggle("active", state.type === "compose");
   $("type-pose").setAttribute("aria-pressed", String(state.type === "pose"));
   $("type-costume").setAttribute("aria-pressed", String(state.type === "costume"));
   $("type-portrait").setAttribute("aria-pressed", String(state.type === "portrait"));
+  $("type-depth").setAttribute("aria-pressed", String(state.type === "depth"));
   $("type-compose").setAttribute("aria-pressed", String(state.type === "compose"));
-  if (state.type === "costume") {
+  if (state.type === "depth") {
+    $("description").textContent = t("depthDescription");
+    $("search-label").textContent = t("searchLabel");
+    $("keyboard-hint").textContent = t("hint");
+  } else if (state.type === "costume") {
     $("description").textContent = t("costumeDescription");
     $("search-label").textContent = t("costumeSearchLabel");
     $("keyboard-hint").textContent = t("costumeHint");
@@ -258,13 +269,14 @@ function refreshStaticText() {
   $("close").setAttribute("aria-label", t("close"));
   $("prev").setAttribute("aria-label", t("previous"));
   $("next").setAttribute("aria-label", t("next"));
-  $("add-to-compose").textContent = t(state.type === "portrait" ? "addPortrait" : state.type === "costume" ? "addCostume" : "addPose");
+  $("add-to-compose").textContent = t(state.type === "portrait" ? "addPortrait" : state.type === "depth" ? "addDepth" : state.type === "costume" ? "addCostume" : "addPose");
   composeUI.refreshLabels();
   $("lang-zh").setAttribute("aria-pressed", i18n.locale === "zh-CN" ? "true" : "false");
   $("lang-en").setAttribute("aria-pressed", i18n.locale === "en" ? "true" : "false");
   $("lang-ja").setAttribute("aria-pressed", i18n.locale === "ja" ? "true" : "false");
   if (state.poseImages.length) {
-    $("counts").textContent = t("countsWithPortrait", state.poseImages.length, state.costumeImages.length, state.portraitImages.length);
+    $("counts").textContent = t("countsWithDepth", state.poseImages.length, state.depthImages.length,
+      state.costumeImages.length, state.portraitImages.length);
   } else $("counts").textContent = t("loadingCounts");
 }
 function changeLanguage(locale) {
@@ -280,9 +292,11 @@ function initialize() {
   refreshStaticText();
   try {
     state.poseImages = window.POSE_GALLERY_CATALOG;
+    state.depthImages = window.DEPTH_GALLERY_CATALOG;
     state.costumeImages = window.COSTUME_GALLERY_CATALOG;
     state.portraitImages = window.PORTRAIT_GALLERY_CATALOG;
     if (!Array.isArray(state.poseImages) || !state.poseImages.length ||
+        !Array.isArray(state.depthImages) || state.depthImages.length !== state.poseImages.length ||
         !Array.isArray(state.costumeImages) || !state.costumeImages.length ||
         !Array.isArray(state.portraitImages) || !state.portraitImages.length) {
       throw new Error("A catalog is missing or contains no images");
@@ -316,7 +330,7 @@ function switchType(type) {
     return;
   }
   state.images = type === "portrait" ? state.portraitImages :
-    type === "costume" ? state.costumeImages : state.poseImages;
+    type === "costume" ? state.costumeImages : type === "depth" ? state.depthImages : state.poseImages;
   resetFilters();
   updateAngles();
   refreshStaticText();
@@ -324,9 +338,15 @@ function switchType(type) {
 function addCurrentToComposition() {
   if (!state.selected) return;
   if (state.type === "pose") {
+    composeUI.setReferenceType("pose");
     state.composition.pose = state.selected;
+    composeUI.syncDepthToPose();
     closeImage();
     switchType("costume");
+  } else if (state.type === "depth") {
+    composeUI.setDepthFromCatalog(state.selected);
+    closeImage();
+    switchType("compose");
   } else if (state.type === "costume") {
     composeUI.releaseUploadedImage();
     state.composition.second = state.selected;
@@ -341,8 +361,18 @@ function addCurrentToComposition() {
 $("type-pose").onclick = () => switchType("pose");
 $("type-costume").onclick = () => switchType("costume");
 $("type-portrait").onclick = () => switchType("portrait");
+$("type-depth").onclick = () => switchType("depth");
 $("type-compose").onclick = () => switchType("compose");
 $("add-to-compose").onclick = addCurrentToComposition;
+$("toggle-pose-depth").onclick = () => {
+  if (!state.selected || !["pose", "depth"].includes(state.type)) return;
+  const id = state.selected.id;
+  const target = state.type === "pose" ? "depth" : "pose";
+  closeImage();
+  switchType(target);
+  const index = state.cards.findIndex((card) => card.images.some((entry) => entry.id === id));
+  if (index >= 0) openImage(index, state.cards[index].images.find((entry) => entry.id === id));
+};
 composeUI.bind();
 $("lang-zh").onclick = () => changeLanguage("zh-CN");
 $("lang-en").onclick = () => changeLanguage("en");

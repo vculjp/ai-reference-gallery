@@ -33,7 +33,8 @@ function catalogs(language = "zh-CN") {
   const manifest = catalogAPI.loadManifest();
   const i18n = scope.window.ReferenceGalleryI18n;
   i18n.setLocale(language);
-  return { poses: manifest.collections.pose, outfits: manifest.collections.outfit,
+  return { poses: manifest.collections.pose, depths: manifest.collections.depth,
+    outfits: manifest.collections.outfit,
     portraits: manifest.collections.portrait,
     i18n, manifest };
 }
@@ -53,9 +54,10 @@ function hasCategory(item, name, i18n) {
 }
 const isDuo = (pose) => pose.series === "2人絡み";
 function findAssets(data, type, { query = "", category = "", includeDuo = false } = {}) {
-  if (!["pose", "outfit", "portrait"].includes(type)) throw new Error("--type must be pose, outfit or portrait");
-  return (type === "pose" ? data.poses : type === "portrait" ? data.portraits : data.outfits).filter((item) =>
-    (type !== "pose" || includeDuo || !isDuo(item)) &&
+  if (!["pose", "depth", "outfit", "portrait"].includes(type)) throw new Error("--type must be pose, depth, outfit or portrait");
+  return (type === "pose" ? data.poses : type === "depth" ? data.depths :
+    type === "portrait" ? data.portraits : data.outfits).filter((item) =>
+    (!["pose", "depth"].includes(type) || includeDuo || !isDuo(item)) &&
     hasCategory(item, category, data.i18n) && matches(item, query, data.i18n));
 }
 
@@ -65,10 +67,11 @@ function parseArgs(args) {
     throw new Error("Expected search, categories, catalog, compose, grid or doctor. Run 'help' for examples.");
   }
   const flags = {};
-  const booleans = new Set(["include-duo", "overwrite"]);
+  const booleans = new Set(["include-duo", "overwrite", "use-depth"]);
   const known = new Set(["type", "query", "category", "limit", "lang", "pose-id",
     "outfit-id", "pose-query", "outfit-query", "pose-category", "outfit-category",
     "portrait-id", "portrait-query", "portrait-hair", "portrait-section",
+    "depth-id", "depth-file",
     "person", "outfit-image", "count", "seed", "out", "out-dir", "background",
     "labels", "size", "describe", "grid-mode", "grid-source", "aspect",
     "id", "offset", "format", ...booleans]);
@@ -163,7 +166,7 @@ function selectCompositions(data, options) {
 
 function selectSingles(data, options, count) {
   const type = options["grid-source"] || "pose";
-  if (!["pose", "outfit"].includes(type)) throw new Error("--grid-source must be pose or outfit");
+  if (!["pose", "depth", "outfit"].includes(type)) throw new Error("--grid-source must be pose, depth or outfit");
   if (options.person || options["outfit-image"] ||
       ["portrait-id", "portrait-query", "portrait-hair", "portrait-section"].some((key) => options[key])) {
     throw new Error("Single-image grids do not accept --person or --outfit-image; use --grid-mode pairs");
@@ -173,16 +176,18 @@ function selectSingles(data, options, count) {
     throw new Error("No supported constraints recognized in --describe; try 春季 站姿 自然");
   }
   const random = randomFromSeed(options.seed);
-  const id = options[type === "pose" ? "pose-id" : "outfit-id"];
-  const mismatch = options[type === "pose" ? "outfit-id" : "pose-id"];
-  if (mismatch) throw new Error(`--${type === "pose" ? "outfit-id" : "pose-id"} does not apply to a ${type} single-image grid`);
-  const filtered = id ? (type === "pose" ? data.poses : data.outfits).filter((x) => x.id === id) :
-    findAssets(data, type, { query: options[type + "-query"] || "",
-      category: options[type + "-category"] || "",
+  const idOption = type === "outfit" ? "outfit-id" : type === "depth" ? "depth-id" : "pose-id";
+  const id = options[idOption];
+  const incompatible = ["pose-id", "outfit-id", "depth-id"].find((key) => key !== idOption && options[key]);
+  if (incompatible) throw new Error(`--${incompatible} does not apply to a ${type} single-image grid`);
+  const source = type === "pose" ? data.poses : type === "depth" ? data.depths : data.outfits;
+  const filtered = id ? source.filter((x) => x.id === id) :
+    findAssets(data, type, { query: options[(type === "depth" ? "pose" : type) + "-query"] || "",
+      category: options[(type === "depth" ? "pose" : type) + "-category"] || "",
       includeDuo: !!options["include-duo"] || !!intent?.includeDuo });
   if (!filtered.length) throw new Error(`No matching ${type} images`);
-  const sorted = intent ? rank(filtered, type, intent, random) : shuffled(filtered, random);
-  const unique = type === "pose" ?
+  const sorted = intent ? rank(filtered, type === "depth" ? "pose" : type, intent, random) : shuffled(filtered, random);
+  const unique = ["pose", "depth"].includes(type) ?
     [...new Map(sorted.map((item) => [item.pose_key, item])).values()] : sorted;
   if (!unique.length) throw new Error("No matching images after applying style exclusions");
   if (unique.length < count && !id) {
@@ -224,13 +229,14 @@ function selectPortrait(data, flags) {
   return matches[0];
 }
 
-function promptFor(data, pose, outfit, person) {
+function promptFor(data, pose, outfit, person, depth = null) {
   const { t } = data.i18n;
   const second = outfit ? outfit.id : "UPLOAD";
-  return person
+  const prompt = person
     ? t("composePromptThree", pose.id, t("composePosLeft"), second,
       t("composePosMiddleHorizontal"), t("composePosRight"))
     : t("composePrompt", pose.id, t("composePosLeft"), second, t("composePosRight"));
+  return prompt + (depth ? "\n\n" + t("composeDepthPrompt", depth.id) : "");
 }
 
 function gridPrompt(data, pairs, person) {
@@ -248,18 +254,23 @@ function gridPrompt(data, pairs, person) {
   })].join("\n\n---\n\n");
 }
 
-function compositionInputs(pair, person, outfitFile, flags) {
-  return { pose: pair.pose, second: pair.outfit ||
+function compositionInputs(pair, person, outfitFile, flags, depthFile = null) {
+  // Pose and Depth are alternative inputs to the first reference slot.
+  return { pose: depthFile ?
+    { id: depthFile.name, uploadUrl: "/__upload/depth" } : pair.depth || pair.pose,
+    second: pair.outfit ||
     { id: outfitFile.name, uploadUrl: "/__upload/outfit" },
   person: person ? (person.original ? person :
     { id: person.name, uploadUrl: "/__upload/person" }) : null,
   background: flags.background || "white", labels: flags.labels !== "false" };
 }
 
-function compositionMeta(data, pair, person, outfitFile) {
+function compositionMeta(data, pair, person, outfitFile, depthFile = null) {
   const { pose, outfit } = pair;
   return { pose: { id: pose.id, category: data.i18n.label(pose, "category"),
     name: data.i18n.label(pose, "pose_name"), angle: data.i18n.label(pose, "angle") },
+  depth: depthFile ? {uploaded: depthFile.name} :
+    pair.depth ? {id: pair.depth.id, relatedPoseId: pair.pose.id} : null,
   outfit: outfit ? { id: outfit.id, category: data.i18n.label(outfit, "category") }
     : { uploaded: outfitFile.name },
   person: person ? (person.original ? { id: person.id, section: person.section,
@@ -292,7 +303,26 @@ function outputPaths(options, count) {
 async function compose(data, flags) {
   validateCompositionFlags(flags);
   if (flags.size !== undefined) throw new Error("--size is for the grid command");
-  const pairs = selectCompositions(data, flags);
+  if (flags["depth-file"] && (flags["use-depth"] || flags["depth-id"])) {
+    throw new Error("Choose --depth-file or --depth-id/--use-depth, not both");
+  }
+  const pairs = selectCompositions(data, flags["depth-id"] && !flags["pose-id"]
+    ? {...flags, "pose-id": flags["depth-id"]} : flags);
+  const depthFile = localImage(flags["depth-file"], "Depth image");
+  if (depthFile && path.extname(depthFile.filename).toLowerCase() !== ".png") {
+    throw new Error("--depth-file must point to a PNG");
+  }
+  const selectedPairs = pairs.map((pair) => {
+    const depth = flags["use-depth"] || flags["depth-id"]
+      ? data.depths.find((item) => item.id === pair.pose.id) : null;
+    if (flags["depth-id"] && flags["depth-id"] !== pair.pose.id) {
+      throw new Error("Depth ID must match selected pose ID");
+    }
+    if ((flags["use-depth"] || flags["depth-id"]) && !depth) {
+      throw new Error(`No corresponding Depth for ${pair.pose.id}`);
+    }
+    return {...pair, depth};
+  });
   const paths = outputPaths(flags, pairs.length);
   const occupied = paths.flatMap((p) => Object.values(p)).filter((p) => fs.existsSync(p));
   if (occupied.length && !flags.overwrite) {
@@ -304,13 +334,17 @@ async function compose(data, flags) {
   const person = localImage(flags.person, "Person photo") || catalogPerson;
   const outfitFile = localImage(flags["outfit-image"], "Outfit image");
   const uploads = { ...(person?.filename ? { person: person.filename } : {}),
+    ...(depthFile ? { depth: depthFile.filename } : {}),
     ...(outfitFile ? { outfit: outfitFile.filename } : {}) };
   const records = [];
-  const assets = await prepareAssets(pairs.map((pair) => ({...pair, person})));
+  const assets = await prepareAssets(selectedPairs.map((pair) => ({
+    pose: depthFile ? null : pair.depth || pair.pose,
+    outfit: pair.outfit, person
+  })));
   await render(read("composition.js"), uploads, async (draw) => {
     for (let i = 0; i < pairs.length; i++) {
       const { pose, outfit } = pairs[i];
-      const inputs = compositionInputs(pairs[i], person, outfitFile, flags);
+      const inputs = compositionInputs(selectedPairs[i], person, outfitFile, flags, depthFile);
       const result = await draw(inputs);
       const png = Buffer.from(result.base64, "base64");
       if (png.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") {
@@ -318,9 +352,10 @@ async function compose(data, flags) {
       }
       const dest = paths[i];
       fs.mkdirSync(path.dirname(dest.png), { recursive: true });
-      const prompt = promptFor(data, pose, outfit, person);
-      const meta = { ...compositionMeta(data, pairs[i], person, outfitFile),
-        image: { width: result.width, height: result.height }, order: ["pose", "outfit",
+      const prompt = promptFor(data, pose, outfit, person, depthFile || selectedPairs[i].depth);
+      const meta = { ...compositionMeta(data, selectedPairs[i], person, outfitFile, depthFile),
+        image: { width: result.width, height: result.height },
+        order: [depthFile || selectedPairs[i].depth ? "depth" : "pose", "outfit",
         ...(person ? ["person"] : [])], png: dest.png, prompt: dest.prompt,
         ...(flags.describe ? { selection: selectionInfo(interpret(flags.describe)) } : {}) };
       fs.writeFileSync(dest.png, png, flags.overwrite ? undefined : { flag: "wx" });
@@ -353,7 +388,15 @@ async function grid(data, flags) {
     throw new Error("--aspect must be square or portrait");
   }
   const count = Number(flags.size);
-  if (mode === "single") return gridSingles(data, flags, count);
+  if (mode === "single") {
+    if (flags["use-depth"] || flags["depth-file"]) {
+      throw new Error("Single grids use --grid-source depth, not --use-depth or --depth-file");
+    }
+    return gridSingles(data, flags, count);
+  }
+  if (flags["depth-id"] || flags["depth-file"]) {
+    throw new Error("Paired grids support --use-depth with matched IDs, not --depth-id/--depth-file");
+  }
   const pairs = selectCompositions(data, { ...flags, count: String(count) });
   if (!flags["pose-id"] && new Set(pairs.map((p) => p.pose.pose_key)).size !== count) {
     throw new Error(`Not enough unique pose groups for ${count} panels. Broaden filters or fix --pose-id.`);
@@ -374,14 +417,21 @@ async function grid(data, flags) {
   const outfitFile = localImage(flags["outfit-image"], "Outfit image");
   const uploads = { ...(person?.filename ? { person: person.filename } : {}),
     ...(outfitFile ? { outfit: outfitFile.filename } : {}) };
-  const entries = pairs.map((pair) => compositionInputs(pair, person, outfitFile, flags));
+  const renderedPairs = flags["use-depth"] ? pairs.map((pair) => {
+    const depth = data.depths.find((item) => item.id === pair.pose.id);
+    if (!depth) throw new Error(`Missing matching Depth: ${pair.pose.id}`);
+    return {...pair, pose: depth};
+  }) : pairs;
+  const entries = renderedPairs.map((pair) => compositionInputs(pair, person, outfitFile, flags));
   const panels = pairs.map((pair, index) => ({
     cell: index + 1, row: Math.floor(index / Math.sqrt(count)) + 1,
     column: index % Math.sqrt(count) + 1,
-    ...compositionMeta(data, pair, person, outfitFile)
+    ...compositionMeta(data, pair, person, outfitFile),
+    ...(flags["use-depth"] ? {depth: {id: pair.pose.id, relatedPoseId: pair.pose.id}} : {})
   }));
-  const prompt = gridPrompt(data, pairs, person);
-  const assets = await prepareAssets(pairs.map((pair) => ({...pair, person})));
+  const prompt = gridPrompt(data, pairs, person) + (flags["use-depth"]
+    ? "\n\n" + data.i18n.t("composeDepthGridPrompt") : "");
+  const assets = await prepareAssets(renderedPairs.map((pair) => ({...pair, person})));
   const rendered = await render(read("composition.js"), uploads, async (_draw, drawGrid) =>
     drawGrid(entries), assets);
   const png = Buffer.from(rendered.base64, "base64");
@@ -390,7 +440,7 @@ async function grid(data, flags) {
   }
   const metadata = { grid: { size: count, columns: Math.sqrt(count), rows: Math.sqrt(count), mode },
     image: { width: rendered.width, height: rendered.height },
-    order: ["pose", "outfit", ...(person ? ["person"] : [])],
+    order: [flags["use-depth"] ? "depth" : "pose", "outfit", ...(person ? ["person"] : [])],
     panels, png: dest.png, prompt: dest.prompt,
     ...(flags.describe ? { selection: selectionInfo(interpret(flags.describe)) } : {}) };
   fs.mkdirSync(path.dirname(dest.png), { recursive: true });
@@ -410,7 +460,7 @@ async function gridSingles(data, flags, count) {
   if (occupied && !flags.overwrite) {
     throw new Error(`Output already exists: ${occupied}. Use --overwrite or choose another path.`);
   }
-  const pairs = selected.map((entry) => ({ pose: type === "pose" ? entry : null,
+  const pairs = selected.map((entry) => ({ pose: ["pose", "depth"].includes(type) ? entry : null,
     outfit: type === "outfit" ? entry : null }));
   const assets = await prepareAssets(pairs);
   const entries = selected.map((item) => ({ path: item.original, id: item.id }));
@@ -428,9 +478,9 @@ async function gridSingles(data, flags, count) {
   }));
   const language = data.i18n.locale;
   const intro = {
-    "zh-CN": `这是一张${count}格${type === "pose" ? "姿势" : "服装"}素材对比图，每格是一张独立参考图片，依照从左到右、从上到下的格子编号选择需要的素材。`,
-    en: `This is a ${count}-panel ${type === "pose" ? "pose" : "outfit"} reference sheet. Each panel contains one independent image. Choose a reference by its position, reading left to right and top to bottom.`,
-    ja: `これは${count}コマの${type === "pose" ? "ポーズ" : "衣装"}参考シートです。各コマには独立した参考画像が1枚あります。左から右、上から下の順に素材を選んでください。`
+    "zh-CN": `这是一张${count}格${type === "pose" ? "姿势" : type === "depth" ? "Depth 深度图" : "服装"}素材对比图，每格是一张独立参考图片，依照从左到右、从上到下的格子编号选择需要的素材。`,
+    en: `This is a ${count}-panel ${type === "pose" ? "pose" : type === "depth" ? "depth" : "outfit"} reference sheet. Each panel contains one independent image. Choose a reference by its position, reading left to right and top to bottom.`,
+    ja: `これは${count}コマの${type === "pose" ? "ポーズ" : type === "depth" ? "Depth" : "衣装"}参考シートです。各コマには独立した参考画像が1枚あります。左から右、上から下の順に素材を選んでください。`
   }[language];
   const panelText = (panel) => language === "en" ?
     `Panel ${panel.cell}: ${panel.id} (${panel.category})` :
@@ -450,17 +500,18 @@ async function gridSingles(data, flags, count) {
 }
 
 const help = `AI Reference Gallery Skill (Node.js 22+)
-  catalog [--type pose|outfit|portrait] [--id ID] [--query TEXT] [--category NAME] [--offset 0] [--limit 20]
+  catalog [--type pose|depth|outfit|portrait] [--id ID] [--query TEXT] [--category NAME] [--offset 0] [--limit 20]
           [--format list|manifest]   Stable Catalog v1 JSON interface
-  search --type pose|outfit|portrait [--query words] [--category name] [--limit 10] [--lang zh-CN|en|ja] [--include-duo]
-  categories --type pose|outfit|portrait [--lang zh-CN|en|ja] [--include-duo]
+  search --type pose|depth|outfit|portrait [--query words] [--category name] [--limit 10] [--lang zh-CN|en|ja] [--include-duo]
+  categories --type pose|depth|outfit|portrait [--lang zh-CN|en|ja] [--include-duo]
   compose [--pose-id ID | --pose-query words] [--outfit-id ID | --outfit-query words | --outfit-image FILE]
           [--pose-category NAME] [--outfit-category NAME] [--include-duo]
           [--person FILE | --portrait-id ID | --portrait-hair NAME] [--portrait-section face|styling] [--portrait-query TEXT]
+          [--depth-file FILE.png | --depth-id MATCHING_POSE_ID | --use-depth]
           [--count 1..20] [--seed STRING] [--background white|soft]
           [--labels true|false] [--lang zh-CN|en|ja] [--out FILE.png | --out-dir DIR] [--overwrite]
-  grid --size 4|9 [the same pose, outfit, person, filters, seed, background, labels and output flags as compose]
-  grid --size 4|9 --grid-mode single --grid-source pose|outfit [--aspect square|portrait]
+  grid --size 4|9 [the same pose, outfit, person, filters, seed, background, labels and output flags as compose] [--use-depth]
+  grid --size 4|9 --grid-mode single --grid-source pose|depth|outfit [--aspect square|portrait]
   compose|grid --describe "春季日常站姿，不要性感风格" [other flags]
   doctor       Check Node.js, Chrome/Edge, bundled runtime and cache access without network
 No gallery clone required: the skill contains catalogs and fetches selected original images on demand.
@@ -507,7 +558,7 @@ async function main(argv) {
     const limit = number(flags.limit, 10, 1, 100, "limit");
     const items = results.slice(0, limit).map((item) => ({
       id: item.id, category: data.i18n.label(item, "category"),
-      ...(type === "pose" ? { name: data.i18n.label(item, "pose_name"),
+      ...(["pose", "depth"].includes(type) ? { name: data.i18n.label(item, "pose_name"),
         angle: data.i18n.label(item, "angle"), poseKey: item.pose_key } : {}),
       thumbnail: item.thumbnail
     }));

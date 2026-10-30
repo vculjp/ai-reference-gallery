@@ -9,12 +9,17 @@ This project combines a static image viewer with separately sourced visual refer
 | 类型               | 原始来源                                                    | 对应文件                             |
 | ------------------ | ----------------------------------------------------------- | ------------------------------------ |
 | Pose / 姿势参考    | [AI Pose Gallery](https://ai-pose-gallery.pages.dev/)       | `img/pose/`, `catalog.js`            |
+| Depth / 深度参考 | [AI Pose Depth Gallery](https://ai-pose-depth-gallery.pages.dev/)（ギア） | `img/depth/`, `depth-catalog.js` |
 | Costume / 服装参考 | [AI Costume Gallery](https://ai-costume-gallery.pages.dev/) | `img/costume/`, `costume-catalog.js` |
 | Portrait / 脸部与造型参考 | [AI Portrait Gallery](https://ai-portrait-gallery.pages.dev/)（あぎ） | `img/portrait/thumb/`、`img/portrait/original/`、`portrait-catalog.js` |
 
 The images and source-derived metadata remain subject to their respective rights holders' conditions. The maintainer has reported authorization for the project materials; **before publishing a public repository, verify and document the precise permitted scope**, including public redistribution on GitHub, downloadable originals, modifications, and any credit or license requirements.
 
 项目维护者已表示取得相关授权，但在公开发布前仍须以实际授权条款核对并留存适用范围，包括 GitHub 公开分发、原图下载、修改、署名以及第三方再利用等条件。**仅注明来源或添加原站链接，不等于获得相应的版权许可。**
+
+### Depth 深度图库
+
+维护者表示已另行联系原作者并获得 Depth 图库的授权。原站公开规则默认禁止批量下载及再分发，因此发布前仍须核对本次额外授权是否明确覆盖**批量获取、原图与缩略图随仓库公开、静态网站展示、Skill 按需下载**。本地导入脚本 `node scripts/import-depth.cjs --mode=all` 仅供有相应许可的维护者执行，支持断点续传和 PNG/JPEG 格式校验；`--mode=verify` 可检查资源完整性。Depth 与普通姿势的 1,439 个 ID 完全一致，索引派生自姿势清单，无需重复维护元数据。
 
 ### 脸部素材的交付方式
 

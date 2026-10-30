@@ -10,7 +10,8 @@ const schemaVersion = 1;
 const filename = "catalog-v1.json.gz";
 const assetPath = /^img\/(?:pose|costume)\/[a-z0-9_-]+\/(?:original|thumbs|preview)\/[a-zA-Z0-9_.-]+\.(?:png|jpg|jpeg|webp)$/;
 const portraitPath = /^img\/portrait\/(?:original|thumb)\/[a-z0-9]{11}\.(?:png|webp)$/;
-const collections = ["pose", "outfit", "portrait"];
+const depthPath = /^img\/depth\/(?:original|thumbs)\/[a-zA-Z0-9_-]+\.(?:png|jpg)$/;
+const collections = ["pose", "depth", "outfit", "portrait"];
 
 function checkManifest(manifest) {
   if (!manifest || manifest.schemaVersion !== schemaVersion ||
@@ -30,6 +31,7 @@ function checkManifest(manifest) {
       for (const field of ["thumbnail", "original"]) {
         if (typeof entry[field] !== "string" ||
           (type === "portrait" ? !portraitPath.test(entry[field]) :
+            type === "depth" ? !depthPath.test(entry[field]) :
             !assetPath.test(entry[field]) ||
             !entry[field].startsWith(`img/${type === "pose" ? "pose" : "costume"}/`))) {
           throw new Error(`Invalid ${type} ${field}: ${entry.id}`);
@@ -38,7 +40,7 @@ function checkManifest(manifest) {
       if (entry.preview && !(type === "portrait" ? portraitPath : assetPath).test(entry.preview)) {
         throw new Error(`Invalid preview: ${entry.id}`);
       }
-      if (type === "pose" && (!entry.pose_key || !entry.pose_number || !entry.angle)) {
+      if (["pose", "depth"].includes(type) && (!entry.pose_key || !entry.pose_number || !entry.angle)) {
         throw new Error(`Incomplete pose: ${entry.id}`);
       }
     }
@@ -55,7 +57,7 @@ function loadManifest(file = path.resolve(__dirname, "../data", filename)) {
 
 function query(manifest, { type = "pose", id, category, q, limit = 20, offset = 0 } = {}) {
   checkManifest(manifest);
-  if (!collections.includes(type)) throw new Error("type must be pose, outfit or portrait");
+  if (!collections.includes(type)) throw new Error("type must be pose, depth, outfit or portrait");
   if (!Number.isInteger(limit) || limit < 1 || limit > 1000 ||
       !Number.isInteger(offset) || offset < 0) throw new Error("Invalid limit/offset");
   const normalized = String(q || "").normalize("NFKC").toLowerCase();
@@ -74,7 +76,7 @@ function query(manifest, { type = "pose", id, category, q, limit = 20, offset = 
 function imageURL(record, field = "original", base = "https://gallery.zsj.pp.ua/") {
   if (!["thumbnail", "original", "preview"].includes(field) ||
       typeof record?.[field] !== "string" ||
-      !(assetPath.test(record[field]) || portraitPath.test(record[field]))) {
+      !(assetPath.test(record[field]) || portraitPath.test(record[field]) || depthPath.test(record[field]))) {
     throw new Error("Unsupported catalog image path");
   }
   const url = new URL(base);

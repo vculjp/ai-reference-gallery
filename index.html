@@ -58,6 +58,7 @@
         <button id="type-pose" class="active" type="button" aria-pressed="true">姿势素材</button>
         <button id="type-costume" type="button" aria-pressed="false">服装素材</button>
         <button id="type-portrait" type="button" aria-pressed="false">脸部素材</button>
+        <button id="type-depth" type="button" aria-pressed="false">Depth 深度图</button>
         <button id="type-compose" type="button" aria-pressed="false">组合制作</button>
       </nav>
     </div>
@@ -167,6 +168,10 @@
               <label class="compose-checkbox"><input id="compose-grid-labels" type="checkbox" checked><span id="compose-grid-labels-label">显示图片编号</span></label>
             </div>
             <button id="compose-grid-shuffle" class="compose-random-primary" type="button">重新随机全部</button>
+            <label class="compose-checkbox compose-depth-switch">
+              <input type="checkbox" id="compose-grid-use-depth">
+              <span id="compose-grid-depth-label">使用对应 Depth 代替姿势图</span>
+            </label>
             <details class="compose-prompt-box compose-grid-prompt-box" id="compose-grid-prompt-box" open>
               <summary id="compose-grid-prompt-title">AI 创作提示词</summary>
               <p id="compose-grid-prompt-help">按宫格位置逐组说明姿势、服装与人物参考，复制后可交给支持参考图的 AI 工具。</p>
@@ -188,13 +193,21 @@
       <div class="compose-workbench" id="compose-workbench">
       <div class="compose-selection">
         <article class="compose-slot">
-          <div class="compose-slot-head"><span id="compose-pose-label">01 · 姿势</span><span id="compose-pose-id"></span></div>
+          <div class="compose-slot-head">
+            <span id="compose-pose-label">01 · 姿势</span>
+            <span id="compose-pose-id"></span>
+          </div>
           <div class="compose-slot-preview" id="compose-pose-preview"><span id="compose-pose-empty">尚未选择姿势</span></div>
           <p class="compose-drawn-meta" id="compose-pose-meta"></p>
           <div class="compose-slot-actions">
             <button type="button" class="compose-choose" id="compose-choose-pose">选择姿势</button>
             <button type="button" class="compose-secondary" id="compose-random-pose">随机姿势</button>
+            <button type="button" class="compose-secondary" id="compose-match-depth" hidden>恢复匹配 Depth</button>
+            <button type="button" class="compose-secondary" id="compose-upload-depth" hidden>上传 Depth PNG</button>
+            <button type="button" class="compose-secondary" id="compose-remove-depth" hidden>清除自定义 Depth</button>
+            <button type="button" class="compose-secondary" id="compose-download-depth" hidden>下载原始 Depth</button>
           </div>
+          <input type="file" id="compose-depth-input" accept="image/png" hidden>
         </article>
         <article class="compose-slot">
           <div class="compose-slot-head"><span id="compose-costume-label">02 · 服装或图片</span><span id="compose-costume-id"></span></div>
@@ -243,6 +256,10 @@
           </label>
           <label class="compose-checkbox"><input type="checkbox" id="compose-labels" checked><span id="compose-labels-label">显示图片编号</span></label>
         </div>
+        <label class="compose-checkbox compose-depth-switch compose-reference-depth-switch">
+          <input type="checkbox" id="compose-reference-depth">
+          <span id="compose-reference-depth-label">用对应 Depth 代替姿势图</span>
+        </label>
         <details class="compose-prompt-box" id="compose-prompt-box">
           <summary id="compose-prompt-title">AI 创作提示词</summary>
           <p id="compose-prompt-help">复制组合图与提示词，可配合自己的角色脸部参考图使用。</p>
@@ -299,12 +316,13 @@
       </div>
       <nav id="angles" class="angles"></nav>
       <div class="dialog-bottom"><span id="position" class="muted"></span>
-        <div class="dialog-actions"><button id="add-to-compose" type="button">加入组合</button><a id="download" download>下载图片</a></div>
+        <div class="dialog-actions"><button id="toggle-pose-depth" type="button" hidden>查看对应 Depth</button><button id="add-to-compose" type="button">加入组合</button><a id="download" download>下载图片</a></div>
       </div>
       <p class="hint" id="keyboard-hint">← → 切换角度，↑ ↓ 切换姿势，Esc 关闭</p>
     </div>
   </div>
   <script src="catalog.js" defer></script>
+  <script src="depth-catalog.js" defer></script>
   <script src="costume-catalog.js" defer></script>
   <script src="portrait-catalog.js" defer></script>
   <script src="i18n.js" defer></script>

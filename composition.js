@@ -13,7 +13,7 @@ window.ReferenceComposition = (() => {
       const relative = (file.webkitRelativePath || file.name).replaceAll("\\", "/");
       const offset = relative.indexOf("img/");
       if (offset >= 0) selected.set(relative.slice(offset), file);
-      else if (/^(pose|costume|portrait)\//.test(relative)) selected.set("img/" + relative, file);
+      else if (/^(pose|costume|portrait|depth)\//.test(relative)) selected.set("img/" + relative, file);
     }
     pickedFiles = selected;
     directory = null;
@@ -78,6 +78,17 @@ window.ReferenceComposition = (() => {
     });
   }
 
+  // Before the portrait assets were deployed, Pages returned a cacheable HTML
+  // fallback for their URLs. Existing browsers may keep that response for up
+  // to four hours, even after the real WebP/PNG files become available.
+  // Use a fresh, stable URL for portrait images while leaving the underlying
+  // catalog paths untouched (important for local file access and downloads).
+  function imageUrl(src) {
+    if (location.protocol === "file:" || typeof src !== "string" ||
+        !src.startsWith("img/portrait/")) return src;
+    return src + (src.includes("?") ? "&" : "?") + "v=portrait-ready-20261030";
+  }
+
   function sourceFor(entry, original) {
     if (entry.uploadUrl) return entry.uploadUrl;
     return original ? entry.original : (entry.preview || entry.thumbnail || entry.original);
@@ -90,7 +101,7 @@ window.ReferenceComposition = (() => {
     const path = sourceFor(entry, highResolution);
     if (!highResolution || entry.uploadUrl || location.protocol !== "file:" ||
         /^https:\/\//.test(path)) {
-      return { image: await loadImage(path) };
+      return { image: await loadImage(imageUrl(path)) };
     }
     const blob = await fileFor(path);
     const url = URL.createObjectURL(blob);
@@ -263,9 +274,32 @@ window.ReferenceComposition = (() => {
     });
   }
 
+  // Preserve original Depth PNG bytes, rather than re-encoding a labelled board.
+  async function exportDepthOriginal(entry) {
+    if (!entry) throw new Error("DEPTH_NOT_SELECTED");
+    if (entry.localFile) return entry.localFile;
+    if (!entry.original) throw new Error("DEPTH_NOT_SELECTED");
+    let blob;
+    if (location.protocol === "file:" && entry.original.startsWith("img/")) {
+      blob = await fileFor(entry.original);
+    } else {
+      const response = await fetch(imageUrl(entry.original));
+      if (!response.ok) throw new Error("IMAGE_LOAD_FAILED");
+      blob = await response.blob();
+    }
+    // Never download an HTML fallback as a mislabeled .png.
+    if (blob.type && blob.type !== "image/png") throw new Error("INVALID_DEPTH_RESPONSE");
+    const bytes = new Uint8Array(await blob.slice(0, 8).arrayBuffer());
+    if (bytes.length !== 8 || [137, 80, 78, 71, 13, 10, 26, 10]
+      .some((value, index) => bytes[index] !== value)) {
+      throw new Error("INVALID_DEPTH_RESPONSE");
+    }
+    return blob;
+  }
+
   function needsFolder() {
     return location.protocol === "file:" && !directory && !pickedFiles;
   }
 
-  return { draw, exportPNG, setFiles, clearFiles, requestFolder, checkLocalAccess, needsFolder };
+  return { draw, exportPNG, exportDepthOriginal, setFiles, clearFiles, requestFolder, checkLocalAccess, needsFolder, imageUrl };
 })();

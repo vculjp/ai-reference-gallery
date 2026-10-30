@@ -23,9 +23,13 @@ test("Catalog v1 has a stable version, validated records and matching counts", (
   const manifest = api.loadManifest();
   assert.equal(manifest.schemaVersion, 1);
   assert.equal(manifest.counts.pose, 1439);
+  assert.equal(manifest.counts.depth, 1439);
   assert.equal(manifest.counts.outfit, 1407);
   assert.equal(manifest.counts.portrait, 1499);
-  assert.deepEqual(Object.keys(manifest.collections), ["pose", "outfit", "portrait"]);
+  assert.deepEqual(Object.keys(manifest.collections), ["pose", "depth", "outfit", "portrait"]);
+  assert.deepEqual(manifest.collections.depth.map((item) => item.id),
+    manifest.collections.pose.map((item) => item.id));
+  assert.equal(catalogs().depths.length, manifest.counts.depth);
   assert.equal(catalogs().poses.length, manifest.counts.pose);
   assert.equal(catalogs().outfits.length, manifest.counts.outfit);
   assert.equal(catalogs().portraits.length, manifest.counts.portrait);
@@ -45,6 +49,11 @@ test("Catalog API filters and paginates, returns local asset paths and resolvabl
   const portrait = api.query(manifest, {type:"portrait",id:"f71f980dde3"}).items[0];
   assert.equal(portrait.original, "img/portrait/original/f71f980dde3.png");
   assert.equal(api.imageURL(portrait), "https://gallery.zsj.pp.ua/img/portrait/original/f71f980dde3.png");
+  const depth = api.query(manifest, {type:"depth",id:"full_sexy_P001_front"}).items[0];
+  assert.equal(depth.original, "img/depth/original/full_sexy_P001_front.png");
+  assert.equal(depth.relatedPoseId, depth.id);
+  assert.equal(api.imageURL(depth), "https://gallery.zsj.pp.ua/img/depth/original/full_sexy_P001_front.png");
+  assert.equal(run("catalog", "--type", "depth", "--limit", "1").total, 1439);
   assert.throws(() => api.query(manifest, { type: "nonexistent" }), /type must be/);
   assert.throws(() => api.query(manifest, { limit: 0 }), /limit/);
   assert.throws(() => api.imageURL({ original: "../private.txt" }), /Unsupported/);
@@ -58,6 +67,7 @@ test("Global CLI catalog endpoint works from any directory, supports JSON export
   assert.equal(record.offset, 1);
   const manifest = run("catalog", "--format", "manifest");
   assert.equal(manifest.counts.pose, 1439);
+  assert.equal(manifest.counts.depth, 1439);
   assert.equal(manifest.counts.outfit, 1407);
   assert.equal(manifest.counts.portrait, 1499);
   assert.ok(manifest.collections.pose.length);

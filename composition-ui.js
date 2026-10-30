@@ -1,6 +1,6 @@
 "use strict";
 // Composition UI controller. Canvas rendering and file access stay in composition.js.
-window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choosePose, chooseCostume, choosePortrait, openComposition}) => {
+window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choosePose, chooseDepth, chooseCostume, choosePortrait, openComposition}) => {
   let previewVersion = 0;
   let previewOpener = null;
   let gridPersonInitialized = false;
@@ -11,6 +11,14 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
   const maxUploadBytes = 50 * 1024 * 1024;
   const validImageFile = (file) => file && imageTypes.has(file.type) &&
     file.size > 0 && file.size <= maxUploadBytes;
+  const depthForPose = (pose) => pose && state.depthImages.find((depth) => depth.id === pose.id) || null;
+  const gridPose = (pose) => state.composition.referenceType === "depth"
+    ? depthForPose(pose) || pose : pose;
+  const selectedReference = () => {
+    const options = state.composition;
+    if (options.referenceType !== "depth") return options.pose;
+    return options.depth?.uploadUrl ? options.depth : depthForPose(options.pose);
+  };
 
   // Draw uniformly from pose groups (then angles), not from repeated images:
   // a group with five angles should not be five times more likely to appear.
@@ -120,13 +128,14 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
       const tile = element("button", "compose-grid-tile");
       tile.type = "button";
       tile.title = t("composeGridReroll");
-      tile.setAttribute("aria-label", t("composeGridTileLabel", index + 1, pose.id, outfit.id));
-      for (const [entry, role] of [[pose, "pose"], [outfit, "outfit"]]) {
+      tile.setAttribute("aria-label", t(state.composition.referenceType === "depth"
+        ? "composeGridDepthTileLabel" : "composeGridTileLabel", index + 1, pose.id, outfit.id));
+      for (const [entry, role] of [[gridPose(pose), "pose"], [outfit, "outfit"]]) {
         const half = element("span", "compose-grid-half compose-grid-" + role);
         const img = element("img");
         img.alt = entry.id;
         img.loading = "lazy";
-        img.src = entry.thumbnail || entry.preview || entry.original;
+        img.src = composition.imageUrl(entry.thumbnail || entry.preview || entry.original);
         half.append(img);
         if (state.composition.gridLabels) {
           half.append(element("span", "compose-grid-tile-code", entry.id));
@@ -159,9 +168,9 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     if (hasPerson) {
       const img = element("img");
       img.alt = state.composition.person.id;
-      img.src = state.composition.person.uploadUrl ||
+      img.src = composition.imageUrl(state.composition.person.uploadUrl ||
         state.composition.person.thumbnail || state.composition.person.preview ||
-        state.composition.person.original;
+        state.composition.person.original);
       preview.replaceChildren(img);
     } else preview.replaceChildren();
   }
@@ -248,7 +257,9 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
   // controller only needs to refresh them when the selected language changes.
   function refreshLabels() {
     const keys = {
-      "compose-pose-label": "composePose", "compose-costume-label": "composeSecond",
+      "compose-costume-label": "composeSecond",
+      "compose-reference-depth-label": "composeReferenceDepthCheckbox",
+      "compose-grid-depth-label": "composeGridUseDepth",
       "compose-random-title": "composeRandomTitle", "compose-random-hint": "composeRandomHint",
       "compose-random-pair-label": "composeRandomPair",
       "compose-random-pose": "composeRandomPose", "compose-random-costume": "composeRandomCostume",
@@ -265,7 +276,7 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
       "compose-upload-person": "composeUploadPerson", "compose-remove-person": "composeRemovePerson",
       "compose-choose-person": "composeChoosePortrait",
       "compose-random-person": "composeRandomPerson",
-      "compose-choose-pose": "choosePose", "compose-choose-costume": "chooseCostume",
+      "compose-choose-costume": "chooseCostume",
       "compose-upload": "uploadImage", "compose-preview-eyebrow": "composeEditorEyebrow",
       "compose-preview-title": "composeEditorTitle", "compose-open-preview": "composeOpenPreview",
       "compose-preview-dialog-title": "composePreviewDialogTitle",
@@ -286,6 +297,10 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
       "compose-grid-choose-person": "composeGridChoosePerson",
       "compose-grid-random-person": "composeRandomPerson",
       "compose-grid-upload-person": "composeGridUploadPerson",
+      "compose-match-depth": "composeRestoreDepth",
+      "compose-upload-depth": "composeUploadDepth",
+      "compose-remove-depth": "composeClearCustomDepth",
+      "compose-download-depth": "composeDownloadDepth",
       "compose-grid-bg-label": "composeBg", "compose-grid-white": "composeWhite",
       "compose-grid-soft": "composeSoft", "compose-grid-labels-label": "composeLabels",
       "compose-grid-export-hint": "composeGridExportHint",
@@ -296,6 +311,7 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
       "compose-grid-copy": "composeGridCopy", "compose-grid-download": "composeDownload"
     };
     for (const [id, key] of Object.entries(keys)) $(id).textContent = t(key);
+    refreshReferenceControls();
     $("compose-preview-close").setAttribute("aria-label", t("close"));
     $("compose-random-filters").setAttribute("aria-label", t("composeRandomTitle"));
     $("compose-mode-tabs").setAttribute("aria-label", t("composeModeLabel"));
@@ -308,6 +324,8 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
       (images) => images[0].pose_key);
     if (!group) return false;
     state.composition.pose = group[Math.floor(Math.random() * group.length)];
+    if (state.composition.referenceType === "depth") releaseUploadedDepth();
+    syncDepthToPose();
     return true;
   }
   function drawRandomCostume() {
@@ -342,23 +360,110 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
   }
   function releaseUploadedImage() { releaseUpload("second"); }
   function releaseUploadedPerson() { releaseUpload("person"); }
+  function releaseUploadedDepth() { releaseUpload("depth"); }
+  function setDepthFromCatalog(item) {
+    releaseUploadedDepth();
+    state.composition.depth = item;
+    // Catalog Depth and pose IDs are 1:1. Never keep a mismatched pose.
+    state.composition.pose = state.poseImages.find((pose) => pose.id === item.id) || state.composition.pose;
+    state.composition.referenceType = "depth";
+    refreshReferenceControls();
+    updateComposition();
+  }
+  function syncDepthToPose() {
+    if (state.composition.depth?.uploadUrl) return;
+    state.composition.depth = depthForPose(state.composition.pose);
+  }
+  function setReferenceType(type) {
+    if (!["pose", "depth"].includes(type)) return;
+    state.composition.referenceType = type;
+    if (type === "depth" && !state.composition.depth?.uploadUrl) syncDepthToPose();
+    refreshReferenceControls();
+    updateComposition();
+    if (isGrid()) renderGridTiles();
+  }
+  function refreshReferenceControls() {
+    const depth = state.composition.referenceType === "depth";
+    $("compose-reference-depth").checked = depth;
+    $("compose-grid-use-depth").checked = depth;
+    $("compose-pose-label").textContent = t(depth ? "composeDepthFirst" : "composePose");
+    $("compose-pose-empty").textContent = t(depth ? "composeDepthEmpty" : "composeEmptyPose");
+    $("compose-choose-pose").textContent = t(depth ? "composeChooseDepth" : "choosePose");
+    $("compose-random-pose").textContent = t(depth ? "composeRandomDepth" : "composeRandomPose");
+    $("compose-upload-depth").hidden = !depth;
+    const uploaded = depth && !!state.composition.depth?.uploadUrl;
+    $("compose-match-depth").hidden = !uploaded || !state.composition.pose;
+    $("compose-remove-depth").hidden = !uploaded;
+    $("compose-download-depth").hidden = !depth || !selectedReference();
+    $("compose-grid-heading").textContent = t(depth ? "composeGridDepthHeading" : "composeGridHeading");
+    $("compose-grid-hint").textContent = t(depth ? "composeGridDepthHint" : "composeGridHint");
+    $("compose-grid-prompt-help").textContent = t(depth ? "composeGridDepthPromptHelp" : "composeGridPromptHelp");
+    $("compose-random-title").textContent = t(depth ? "composeDepthRandomTitle" : "composeRandomTitle");
+    $("compose-random-hint").textContent = t(depth ? "composeDepthRandomHint" : "composeRandomHint");
+  }
+  function matchDepthToPose() {
+    const matched = depthForPose(state.composition.pose);
+    if (!matched) return setComposeStatus("composeDepthNoMatch");
+    setDepthFromCatalog(matched);
+  }
+  function removeDepth() {
+    releaseUploadedDepth();
+    state.composition.depth = depthForPose(state.composition.pose);
+    updateComposition();
+  }
+  async function uploadDepth(file) {
+    if (!file) return;
+    if (file.type !== "image/png" || !validImageFile(file)) return setComposeStatus("composeInvalidDepth");
+    const url = URL.createObjectURL(file);
+    try {
+      const image = new Image();
+      image.src = url;
+      await image.decode();
+      releaseUploadedDepth();
+      state.composition.depth = {id: file.name, uploadUrl: url, localFile: file};
+      state.composition.referenceType = "depth";
+      updateComposition();
+    } catch (_) {
+      URL.revokeObjectURL(url);
+      setComposeStatus("composeInvalidDepth");
+    }
+  }
+  async function downloadDepth() {
+    const entry = state.composition.referenceType === "depth" ? selectedReference() : null;
+    if (!entry) return;
+    if (composition.needsFolder() && !entry.uploadUrl && !(await chooseLocalFolder())) return;
+    try {
+      const file = await composition.exportDepthOriginal(entry);
+      const url = URL.createObjectURL(file);
+      const anchor = element("a");
+      anchor.download = String(entry.id).replace(/[^\w.-]/g, "_").replace(/\.png$/i, "") + "_depth.png";
+      anchor.href = url;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      setComposeStatus("composeSaved");
+    } catch (_) {
+      setComposeStatus("composeExportError");
+    }
+  }
   function compositionOptions() {
     if (isGrid()) return {
       mode: state.composition.mode,
-      items: state.composition.gridItems.map(({pose, outfit}) => ({pose, outfit})),
+      items: state.composition.gridItems.map(({pose, outfit}) => ({pose: gridPose(pose), outfit})),
       person: state.composition.gridUsePerson ? state.composition.person : null,
       background: state.composition.gridBackground,
       labels: state.composition.gridLabels
     };
-    return { ...state.composition, mode: "reference" };
+    return { ...state.composition, pose: selectedReference(), depth: null, mode: "reference" };
   }
   const activeEntries = () => isGrid()
-    ? [...state.composition.gridItems.flatMap(({pose, outfit}) => [pose, outfit]),
+    ? [...state.composition.gridItems.flatMap(({pose, outfit}) => [gridPose(pose), outfit]),
       ...(state.composition.gridUsePerson && state.composition.person ? [state.composition.person] : [])]
-    : [state.composition.pose, state.composition.second, state.composition.person].filter(Boolean);
+    : [selectedReference(), state.composition.second, state.composition.person].filter(Boolean);
   const hasCompleteSelection = () => isGrid()
     ? state.composition.gridItems.length === gridCount()
-    : !!state.composition.pose && !!state.composition.second;
+    : !!selectedReference() && !!state.composition.second;
   function setStatus(id, key, error = false) {
     const message = key ? t(key) : "";
     const status = error ? "error" : "";
@@ -376,24 +481,27 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
   function setComposeStatus(key) {
     setStatus("compose-status", key,
       ["composeExportError", "composeOnlineImageError", "composeMissingFile",
-        "composeInvalidUpload"].includes(key));
+        "composeInvalidUpload", "composeInvalidDepth"].includes(key));
   }
   function syncComposeFolderNotice() {
     $("compose-local-notice").hidden = location.protocol !== "file:" || !composition.needsFolder();
   }
   function updatePrompt() {
-    const { pose, second, person } = state.composition;
+    const { second, person } = state.composition;
+    const pose = selectedReference();
     if (!pose || !second) {
       $("compose-prompt-text").value = t("composePromptEmpty");
       return;
     }
     if (person) {
       $("compose-prompt-text").value = t("composePromptThree", pose.id,
-        t("composePosLeft"), second.id, t("composePosMiddleHorizontal"), t("composePosRight"));
+        t("composePosLeft"), second.id, t("composePosMiddleHorizontal"), t("composePosRight")) +
+        (state.composition.referenceType === "depth" ? "\n\n" + t("composeDepthPrompt", pose.id) : "");
       return;
     }
     $("compose-prompt-text").value = t("composePrompt", pose.id,
-      t("composePosLeft"), second.id, t("composePosRight"));
+      t("composePosLeft"), second.id, t("composePosRight")) +
+      (state.composition.referenceType === "depth" ? "\n\n" + t("composeDepthPrompt", pose.id) : "");
   }
   function updateGridPrompt() {
     const complete = isGrid() && hasCompleteSelection();
@@ -410,12 +518,14 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
       ? person.uploadUrl ? t("composeGridPromptPersonUpload") :
         t("composeGridPromptPersonCatalog", person.id)
       : t("composeGridPromptNoPerson");
+    const depthMode = state.composition.referenceType === "depth";
     const pairLines = gridItems.map(({pose, outfit}, index) =>
-      t("composeGridPromptPair", index + 1, Math.floor(index / columns) + 1,
+      t(depthMode ? "composeGridDepthPair" : "composeGridPromptPair", index + 1, Math.floor(index / columns) + 1,
         index % columns + 1, pose.id, label(pose, "pose_name") || label(pose, "category"),
         outfit.id, label(outfit, "category")));
     $("compose-grid-prompt-text").value = [
-      t("composeGridPromptIntro", count, columns), shared, ...pairLines,
+      t(depthMode ? "composeGridDepthIntro" : "composeGridPromptIntro", count, columns), shared,
+      ...(depthMode ? [t("composeDepthGridPrompt")] : []), ...pairLines,
       t("composeGridPromptFinish")
     ].join("\n\n");
   }
@@ -526,19 +636,21 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     // Reference selection survives switching to a four/nine grid, including
     // language changes made while the grid panel is active.
     const options = state.composition;
+    refreshReferenceControls();
     syncComposeFolderNotice();
-    for (const [key, image] of [["pose", options.pose], ["costume", options.second]]) {
+    for (const [key, image] of [["pose", selectedReference()], ["costume", options.second]]) {
       const panel = $(key === "pose" ? "compose-pose-preview" : "compose-costume-preview");
       panel.querySelector("img")?.remove();
       $(key === "pose" ? "compose-pose-id" : "compose-costume-id").textContent = image?.id || "";
       $(key === "pose" ? "compose-pose-empty" : "compose-costume-empty").hidden = !!image;
       $(key === "pose" ? "compose-pose-meta" : "compose-costume-meta").textContent = !image ? "" :
-        key === "pose" ? t("composePoseMeta", label(image, "category"), label(image, "angle")) :
+        key === "pose" ? (image.uploadUrl ? t("composeDepthUploaded") :
+          t("composePoseMeta", label(image, "category"), label(image, "angle"))) :
         (image.uploadUrl ? image.id : label(image, "category"));
       if (image) {
         const img = element("img");
         img.alt = image.id;
-        img.src = image.uploadUrl || image.thumbnail || image.preview || image.original;
+        img.src = composition.imageUrl(image.uploadUrl || image.thumbnail || image.preview || image.original);
         if (animate.includes(key)) img.classList.add("compose-random-appear");
         panel.prepend(img);
       }
@@ -551,12 +663,12 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     if (options.person) {
       const img = element("img");
       img.alt = options.person.id;
-      img.src = options.person.uploadUrl || options.person.thumbnail || options.person.preview || options.person.original;
+      img.src = composition.imageUrl(options.person.uploadUrl || options.person.thumbnail || options.person.preview || options.person.original);
       personPreview.prepend(img);
     }
     updateGridPersonLabel();
     updateGridPrompt();
-    const complete = !!options.pose && !!options.second;
+    const complete = !!selectedReference() && !!options.second;
     $("compose-open-preview").disabled = !complete;
     $("compose-download").disabled = !complete;
     $("compose-preview-download").disabled = !complete;
@@ -599,7 +711,7 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
       const blob = await composition.exportPNG(compositionOptions());
       const name = isGrid()
         ? `${state.composition.mode === "nine" ? "9" : "4"}grid_pose_outfit.png`
-        : [state.composition.pose.id, state.composition.second.id]
+        : [selectedReference().id, state.composition.second.id]
           .map((s) => String(s).replace(/[^\w.-]/g, "_").slice(0, 48)).join("_") + ".png";
       const href = URL.createObjectURL(blob);
       const link = element("a");
@@ -676,6 +788,18 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     updateComposition(["person"]);
   }
   function bind() {
+    $("compose-reference-depth").onchange = (event) =>
+      setReferenceType(event.target.checked ? "depth" : "pose");
+    $("compose-grid-use-depth").onchange = (event) =>
+      setReferenceType(event.target.checked ? "depth" : "pose");
+    $("compose-match-depth").onclick = matchDepthToPose;
+    $("compose-remove-depth").onclick = removeDepth;
+    $("compose-download-depth").onclick = downloadDepth;
+    $("compose-upload-depth").onclick = () => $("compose-depth-input").click();
+    $("compose-depth-input").onchange = (event) => {
+      void uploadDepth(event.target.files[0]);
+      event.target.value = "";
+    };
     $("compose-choose-person").onclick = () => choosePortrait("reference");
     $("compose-random-person").onclick = () => randomize("person");
     $("compose-grid-choose-person").onclick = () => choosePortrait("grid");
@@ -737,7 +861,8 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
         }
       }
     });
-    $("compose-choose-pose").onclick = choosePose;
+    $("compose-choose-pose").onclick = () =>
+      state.composition.referenceType === "depth" ? chooseDepth() : choosePose();
     $("compose-choose-costume").onclick = chooseCostume;
     $("compose-random-pose").onclick = () => randomize("pose");
     $("compose-random-costume").onclick = () => randomize("costume");
@@ -795,6 +920,7 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
   }
 
   return { bind, updateComposition, closePreview, refreshLabels, releaseUploadedImage, uploadSecondImage,
+    setDepthFromCatalog, syncDepthToPose, setReferenceType,
     setPersonFromCatalog,
     uploadPersonImage, removePersonImage };
 };

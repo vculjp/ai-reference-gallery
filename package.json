@@ -1,7 +1,7 @@
 {
   "name": "@vculjp/ai-reference-gallery",
   "version": "0.1.0",
-  "description": "Standalone pose and outfit reference gallery CLI and Agent Skill. Generates PNG boards without downloading the full image library.",
+  "description": "Pose, Depth, outfit and portrait reference gallery with an offline catalog and standalone Agent Skill. Downloads only selected originals.",
   "license": "MIT",
   "type": "commonjs",
   "bin": {
@@ -30,6 +30,7 @@
   "keywords": [
     "agent-skills",
     "pose-reference",
+    "depth-reference",
     "outfit-gallery",
     "ai-reference",
     "four-grid",

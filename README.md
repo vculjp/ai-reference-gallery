@@ -1,9 +1,11 @@
 # AI Reference Gallery
 
-> **4,345 条 AI 创作参考素材：姿势 × 服装 × 脸部造型。**
+> **5,784 条 AI 创作参考素材：姿势 × Depth 深度图 × 服装 × 脸部造型。**
 > 一个支持双图、三图、四宫格、九宫格和 Agent Skill 的开源参考图工具。**不直接生图、不自动换装或换脸**，而是为 AI 创作整理可以直接使用的视觉参考与提示词。
 
 [在线体验](https://gallery.zsj.pp.ua/) · [GitHub 源码](https://github.com/vculjp/ai-reference-gallery) · [作者 X @vculjp](https://x.com/vculjp)
+
+> Depth 素材和切换功能目前位于 `Depth` 开发分支；以上在线体验地址仍是已发布版本，尚未部署此分支的更新。
 
 ## 页面预览
 
@@ -20,10 +22,13 @@
 | 模块 | 能做什么 |
 | --- | --- |
 | **姿势图库** | 1,439 张姿势图（288 组），按系列、分类、视角、关键词搜索，支持原图预览与下载 |
+| **Depth 深度图库** | 1,439 张与原姿势逐张匹配的深度参考图，支持姿势/Depth 一键切换、原图下载 |
 | **服装图库** | 1,407 套穿搭素材，支持季节、风格、编号筛选 |
 | **脸部图库** | 1,499 张参考图（Face 893 / Styling 606），按用途、发型与关键词筛选 |
 | **双图 / 三图** | 姿势＋服装＋可选人物参考；支持随机搭配、选择脸库素材或上传自己的照片 |
+| **Depth 组合** | 统一切换姿势或 Depth，两者只保留一种；可使用同 ID 的深度图或上传自己的 Depth PNG，支持原始 PNG 下载 |
 | **四宫格 / 九宫格** | 每格都是一组**姿势＋服装**搭配，可统一使用一张脸部参考；支持整组重抽、单格重抽和去重 |
+| **宫格 Depth 模式** | 与普通参考图使用同一个姿势／Depth 切换开关；每格仅显示一种参考，自动匹配同 ID 和角度的 Depth |
 | **导出与提示词** | 预览、复制或下载 PNG，自动整理与当前参考图对应的 AI 创作提示词 |
 | **多语言与离线** | 简体中文、English、日本語；网页使用原生 HTML / CSS / JavaScript，无后端依赖 |
 
@@ -70,6 +75,12 @@ node bin/ai-reference-gallery.cjs grid --size 9 --grid-mode pairs --describe "�
 
 # 单图姿势九宫格（Skill 模式）
 node bin/ai-reference-gallery.cjs grid --size 9 --grid-mode single --grid-source pose --out output/poses.png
+
+# 匹配 Depth 深度图后生成组合参考板
+node bin/ai-reference-gallery.cjs compose --pose-id full_sexy_P001_front --outfit-id SPR-0001 --use-depth --out output/depth-reference.png
+
+# Depth 单图四宫格（原始深度 PNG，不等于 AI 生成成品）
+node bin/ai-reference-gallery.cjs grid --size 4 --grid-mode single --grid-source depth --out output/depth-grid.png
 ```
 
 Skill 的查询不需要浏览器；**导出 PNG 需要 Node.js 22+ 和 Chrome / Edge**，未缓存的原图首次导出需要网络。完整安装和参数见 [Skill 使用说明](.agents/skills/ai-reference-gallery/references/usage.md)。

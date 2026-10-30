@@ -164,10 +164,16 @@ body:has(#compose-panel:not([hidden])) .collection-heading h2 { font-size: 25px;
 .compose-person-info p { margin: 5px 0 0; color: var(--secondary); font-size: 11px; line-height: 1.5; }
 .compose-person-actions { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; }
 .compose-person-actions button { flex: 1 1 auto; padding: 8px 11px; font-size: 11px; }
-.compose-slot-head { display: flex; justify-content: space-between; gap: 10px; align-items: center;
+.compose-slot-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; flex-wrap: wrap;
   min-height: 24px; margin-bottom: 0; font-size: 13px; font-weight: 700; }
-.compose-slot-head span:last-child { min-width: 0; color: var(--secondary); font-weight: 500;
+.compose-slot-head > span:not(:first-child) { min-width: 0; color: var(--secondary); font-weight: 500;
   font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compose-depth-switch { min-height: 30px; gap: 7px; font-size: 12px; font-weight: 600; }
+.compose-grid-sidebar .compose-depth-switch { min-height: 30px; }
+.compose-editor > .compose-reference-depth-switch {
+  min-height: 30px; width: 100%; margin-top: 7px;
+}
+.compose-depth-switch input { flex: 0 0 auto; }
 .compose-slot-preview {
   display: flex; justify-content: center; align-items: center;
   flex: 1 1 auto; min-height: 240px; width: 100%;
@@ -315,9 +321,10 @@ body:has(#compose-panel:not([hidden])) .collection-heading h2 { font-size: 25px;
 #compose-download:disabled { cursor: not-allowed; background: #d3d7e0; color: #777d87; }
 #compose-download:not(:disabled):hover { background: #005bb5; }
 .dialog-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: end; }
-#add-to-compose { min-height: 42px; padding: 10px 17px; border: 1px solid #d5d8df;
+#toggle-pose-depth, #add-to-compose { min-height: 42px; padding: 10px 17px; border: 1px solid #d5d8df;
   border-radius: 999px; color: var(--ink); background: #f5f6f8; font-weight: 650; font-size: 13px; }
-#add-to-compose:hover { background: #e9ebf0; }
+#toggle-pose-depth:hover, #add-to-compose:hover { background: #e9ebf0; }
+#toggle-pose-depth:focus-visible { outline:3px solid var(--focus); outline-offset:2px; }
 @media (max-width: 1100px) {
   .compose-grid-body { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
   .compose-grid-gallery { grid-column:1 / -1; }
@@ -328,7 +335,7 @@ body:has(#compose-panel:not([hidden])) .collection-heading h2 { font-size: 25px;
 }
 @media (max-width: 1020px) {
   .compose-workbench { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-  .compose-editor { grid-column: 1 / -1; grid-row: 2; }
+  .compose-workbench .compose-editor { grid-column: 1 / -1; grid-row: 2; }
   .compose-slot-preview { min-height: 240px; }
 }
 @media (max-width: 760px) {

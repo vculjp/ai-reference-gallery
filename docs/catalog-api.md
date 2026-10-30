@@ -1,6 +1,6 @@
 # Catalog v1：统一素材数据接口
 
-网页使用 `catalog.js`、`costume-catalog.js` 和 `portrait-catalog.js` 作为静态索引来源，兼容直接打开 `index.html`；构建脚本从它们生成稳定的 Catalog v1 JSON 压缩清单。不要手工编辑生成文件。
+网页使用 `catalog.js`、`depth-catalog.js`、`costume-catalog.js` 和 `portrait-catalog.js` 作为静态索引来源，兼容直接打开 `index.html`；构建脚本从它们生成稳定的 Catalog v1 JSON 压缩清单。不要手工编辑生成文件。Depth 的 1,439 个 ID 与原姿势库逐张相同，索引通过普通姿势元数据生成，原图存放在 `img/depth/original/`。
 
 | 文件 | 用途 |
 | --- | --- |
@@ -18,9 +18,18 @@
 ```json
 {
   "schemaVersion": 1,
-  "source": ["catalog.js", "costume-catalog.js", "portrait-catalog.js"],
-  "counts": { "pose": 1439, "outfit": 1407, "portrait": 1499 },
+  "source": ["catalog.js", "depth-catalog.js", "costume-catalog.js", "portrait-catalog.js"],
+  "counts": { "pose": 1439, "depth": 1439, "outfit": 1407, "portrait": 1499 },
   "collections": {
+    "depth": [
+      {
+        "id": "full_sexy_P001_front",
+        "relatedPoseId": "full_sexy_P001_front",
+        "category_zh": "站姿",
+        "thumbnail": "img/depth/thumbs/full_sexy_P001_front.jpg",
+        "original": "img/depth/original/full_sexy_P001_front.png"
+      }
+    ],
     "pose": [
       {
         "id": "full_sexy_P001_front",
@@ -60,6 +69,7 @@
 # 从任意目录执行已安装的 CLI（npm 发布后）
 ai-reference-gallery catalog --type outfit --category spring --limit 10
 ai-reference-gallery catalog --type pose --query 站姿 --offset 20 --limit 5
+ai-reference-gallery catalog --type depth --query 站姿 --offset 20 --limit 5
 ai-reference-gallery catalog --type outfit --id SPR-0001
 ai-reference-gallery catalog --type portrait --category short --limit 5
 

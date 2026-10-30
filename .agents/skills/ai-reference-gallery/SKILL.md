@@ -1,6 +1,6 @@
 ---
 name: ai-reference-gallery
-description: Standalone pose, outfit and face reference Skill. Supports catalog face selection, natural-language Chinese/English selection, local style exclusions, image caching, 2/3-image boards, single-image and paired 4/9-panel grids. No full gallery download or API key required.
+description: Standalone pose, depth, outfit and face reference Skill. Supports matched Depth maps, catalog face selection, natural-language selection, caching, reference boards, and 4/9-panel grids. No full gallery download or API key required.
 ---
 
 # AI Reference Gallery
@@ -25,6 +25,7 @@ node scripts/gallery.cjs categories --type pose
 node scripts/gallery.cjs catalog --type outfit --category spring --limit 10
 node scripts/gallery.cjs catalog --format manifest
 node scripts/gallery.cjs search --type pose --query "站姿" --limit 8
+node scripts/gallery.cjs search --type depth --query "站姿" --limit 8
 node scripts/gallery.cjs search --type outfit --category spring --query "white"
 node scripts/gallery.cjs search --type portrait --category short --limit 10
 node scripts/gallery.cjs catalog --type portrait --id f71f980dde3
@@ -39,6 +40,10 @@ node scripts/gallery.cjs compose --pose-id full_sexy_P001_front --outfit-id SPR-
 
 # Select a real face from the portrait catalog instead of uploading a local photo.
 node scripts/gallery.cjs compose --pose-id full_sexy_P001_front --outfit-id SPR-0001 --portrait-id f71f980dde3 --out output/face-reference.png
+node scripts/gallery.cjs compose --pose-id full_sexy_P001_front --outfit-id SPR-0001 --use-depth --out output/depth-outfit.png
+node scripts/gallery.cjs compose --pose-id full_sexy_P001_front --outfit-id SPR-0001 --depth-file "C:/Photos/depth.png" --out output/custom-depth.png
+node scripts/gallery.cjs grid --size 9 --use-depth --out output/depth-grid.png
+node scripts/gallery.cjs grid --size 9 --grid-mode single --grid-source depth --pose-category 站姿 --out output/depth-sheet.png
 node scripts/gallery.cjs grid --size 4 --portrait-hair long --portrait-section face --out output/one-character-grid.png
 
 # Custom outfit photo in slot two, without a catalog outfit.
@@ -71,7 +76,7 @@ node $skill grid --size 9 --grid-mode single --grid-source outfit --describe "�
 node $skill doctor
 ```
 
-Every individual reference board uses **fixed left-to-right** order: pose → outfit → optional person. The `grid` command arranges complete boards in a numbered 2×2 or 3×3 matrix. The grid's `.txt` contains individual prompts for every cell. Only catalog images show catalog IDs. Images are contained without cropping. `--person` and `--outfit-image` accept local JPG, PNG or WebP up to 50 MB; user photos stay local. Defaults are `output/skill-compositions` for `compose` and `output/skill-grids/grid-4.png` or `grid-9.png` for `grid`, **relative to the caller's working directory**.
+Every standard reference board uses **fixed left-to-right** order: pose OR depth → outfit → optional person. With `--use-depth`, Depth **replaces** the pose instead of adding a third panel. In paired grids, each left-hand pose is replaced by its matched Depth. The `grid` command arranges boards in a numbered 2×2 or 3×3 matrix. The grid's `.txt` contains prompts for every cell. Only catalog images show catalog IDs. Images are contained without cropping. `--person` and `--outfit-image` accept local JPG, PNG or WebP up to 50 MB; `--depth-file` requires a local PNG. User photos stay local. Defaults are `output/skill-compositions` for `compose` and `output/skill-grids/grid-4.png` or `grid-9.png` for `grid`, **relative to the caller's working directory**.
 
 `--lang zh-CN|en|ja` controls catalog labels and prompts. Random selection defaults to single-person poses; use `--include-duo` for two-person poses. `compose --count` ranges from 1 to 20; `grid` uses `--size 4|9`. Explicit `--pose-id` / `--outfit-id` locks an asset across cells. Otherwise grid outputs enforce distinct references. `--describe` uses local catalog rules, NOT AI image recognition; unsupported style terms are reported. Existing files are never overwritten without `--overwrite`.
 
