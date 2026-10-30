@@ -39,8 +39,8 @@ body:has(#compose-panel:not([hidden])) .collection-heading h2 { font-size: 25px;
 .compose-grid-tile { display:flex; flex-direction:column; min-width:0; gap:6px; padding:7px; border:1px solid #dce2eb; border-radius:12px; background:#fff; }
 .compose-grid-tile-head { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; min-width:0; gap:5px; }
 .compose-grid-tile-tools { display:flex; flex:0 0 auto; align-items:center; gap:5px; }
-.compose-grid-icon-button { display:grid; flex:none; place-items:center; width:30px; height:30px; padding:0; border:1px solid #dfe4ed; border-radius:50%; background:#fff; color:#657287; cursor:pointer; transition:background .15s,border-color .15s,color .15s; }
-.compose-grid-icon-button svg,.compose-grid-lock svg { display:block; width:17px; height:17px; pointer-events:none; }
+.compose-grid-icon-button { display:grid; flex:none; place-items:center; width:30px; height:30px; padding:0; border:1px solid #dfe4ed; border-radius:50%; background:#fff; color:#536174; cursor:pointer; transition:background .15s,border-color .15s,color .15s; }
+.compose-grid-icon-button svg,.compose-grid-lock svg { display:block; width:17px; height:17px; flex:none; pointer-events:none; }
 .compose-grid-icon-button:hover:not(:disabled),.compose-grid-lock:hover { border-color:#9fc7f3; background:#edf5ff; color:#005bb5; }
 .compose-grid-icon-button:disabled { cursor:not-allowed; opacity:.4; }
 .compose-grid-pair-lock[aria-pressed="true"] { color:#fff; background:#1d1d1f; border-color:#1d1d1f; }
@@ -50,7 +50,7 @@ body:has(#compose-panel:not([hidden])) .collection-heading h2 { font-size: 25px;
 .compose-grid-half { position:relative; display:flex; width:100%; aspect-ratio:1 / 2; min-width:0; overflow:hidden; align-items:center; justify-content:center; background:#f6f7f9; border-radius:7px; }
 .compose-grid-half img { display:block; width:100%; height:100%; object-fit:contain; }
 .compose-grid-tile-code { position:absolute; inset:auto 2px 2px; overflow:hidden; padding:3px 2px; border-radius:4px; background:#fffffff0; font-size:9px; font-weight:650; color:#283648; text-align:center; text-overflow:ellipsis; white-space:nowrap; }
-.compose-grid-lock { position:absolute; top:6px; right:6px; display:grid; place-items:center; width:29px; height:29px; padding:0; border:1px solid #dfe4ed; border-radius:50%; background:#fffE; color:#657287; box-shadow:0 1px 5px #00000012; cursor:pointer; }
+.compose-grid-lock { position:absolute; top:6px; right:6px; display:grid; place-items:center; width:27px; height:27px; padding:0; border:1px solid #dfe4ed; border-radius:50%; background:#fffF; color:#536174; cursor:pointer; }
 .compose-grid-lock.is-locked { color:#fff; border-color:#1d1d1f; background:#1d1d1f; }
 .compose-grid-lock.is-locked:hover { color:#fff; background:#38383c; }
 .compose-grid-image-actions { display:flex; flex-wrap:wrap; justify-content:center; gap:4px; }

@@ -254,7 +254,8 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     $("compose-grid-status").dataset.status = key === "composeGridInsufficient" ? "error" : "";
   }
   function gridActionIcon(kind) {
-    // Small outline icons drawn with the same stroke as the rest of the site.
+    // Consistent, centered 24x24 outline icons. Use standard lock/refresh geometry
+    // rather than the previous hand-drawn open shapes and skewed arrow loops.
     const ns = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(ns, "svg");
     svg.setAttribute("viewBox", "0 0 24 24");
@@ -266,19 +267,29 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     svg.setAttribute("stroke-linecap", "round");
     svg.setAttribute("stroke-linejoin", "round");
     svg.setAttribute("aria-hidden", "true");
-    const paths = {
-      lock: ["M5 11V7a7 7 0 0 1 14 0v4", "M5 11h14v10H5z"],
-      unlock: ["M5 11V7a7 7 0 0 1 13.5-2.5", "M5 11h14v10H5z"],
-      reroll: ["M20 7v5h-5", "M4 17v-5h5",
-        "M5.7 9A7 7 0 0 1 18.9 7L20 12",
-        "M18.3 15A7 7 0 0 1 5.1 17L4 12"],
-      preview: ["M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z",
-        "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6"]
+    const shapes = {
+      lock: [
+        ["rect", {x: 5, y: 11, width: 14, height: 11, rx: 2}],
+        ["path", {d: "M8 11V7a4 4 0 0 1 8 0v4"}]
+      ],
+      unlock: [
+        ["rect", {x: 5, y: 11, width: 14, height: 11, rx: 2}],
+        ["path", {d: "M8 11V7a4 4 0 0 1 7.9-.9"}]
+      ],
+      reroll: [
+        ["path", {d: "M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"}],
+        ["path", {d: "M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"}]
+      ],
+      preview: [
+        ["path", {d: "M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"}],
+        ["circle", {cx: 12, cy: 12, r: 3}]
+      ]
     };
-    for (const d of paths[kind]) {
-      const path = document.createElementNS(ns, "path");
-      path.setAttribute("d", d);
-      svg.append(path);
+    for (const [tag, attributes] of shapes[kind]) {
+      const shape = document.createElementNS(ns, tag);
+      for (const [name, value] of Object.entries(attributes))
+        shape.setAttribute(name, String(value));
+      svg.append(shape);
     }
     return svg;
   }

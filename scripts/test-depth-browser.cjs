@@ -322,6 +322,20 @@ async function main() {
             [...tile.querySelectorAll(".compose-grid-lock")].some(button =>
               button.textContent.trim() || !button.querySelector("svg[aria-hidden='true']")))
           throw Error("Grid header/lock icons did not replace the redundant text and emojis");
+        const refreshSvg = tile.querySelector(".compose-grid-reroll-pair svg");
+        const refreshShape = refreshSvg.getBBox();
+        if (Math.abs(refreshShape.x + refreshShape.width / 2 - 12) > .6 ||
+            Math.abs(refreshShape.y + refreshShape.height / 2 - 12) > .6 ||
+            refreshSvg.querySelectorAll("path").length !== 2)
+          throw Error("Refresh icon is not centered or uses the old skewed path");
+        for (const lockButton of [
+          tile.querySelector(".compose-grid-pair-lock"), ...tile.querySelectorAll(".compose-grid-lock")
+        ]) {
+          const svg = lockButton.querySelector("svg");
+          if (svg.querySelectorAll("rect[rx='2']").length !== 1 ||
+              svg.querySelectorAll("path").length !== 1)
+            throw Error("Lock icon does not use the standard rounded-body outline");
+        }
         const detailBounds = details.getBoundingClientRect();
         const toolsBounds = heading.querySelector(".compose-grid-tile-tools").getBoundingClientRect();
         if (detailBounds.right > toolsBounds.left + 1)
