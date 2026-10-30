@@ -1,169 +1,114 @@
 # AI Reference Gallery
 
-**把姿势、服装和人物照片组合成一张 AI 创作参考图。**
+> **4,345 条 AI 创作参考素材：姿势 × 服装 × 脸部造型。**
+> 一个支持双图、三图、四宫格、九宫格和 Agent Skill 的开源参考图工具。**不直接生图、不自动换装或换脸**，而是为 AI 创作整理可以直接使用的视觉参考与提示词。
 
-一个纯静态、可离线使用的参考图组合工作台。网页支持挑选素材、一键随机搭配与双图 / 三图参考板；独立安装的 **Agent Skill** 还支持自然语言选图、四宫格 / 九宫格和批量导出。生成的参考图可配合提示词交给支持图片参考的 AI 工具使用。
+[在线体验](https://gallery.zsj.pp.ua/) · [GitHub 源码](https://github.com/vculjp/ai-reference-gallery) · [作者 X @vculjp](https://x.com/vculjp)
 
-![组合制作工作台：姿势、服装、组合设置三栏布局](docs/compose.jpg)
+![AI Reference Gallery 组合制作工作台](docs/compose.jpg)
 
-## 核心功能：组合制作
+## 主要功能
 
-桌面端采用 **姿势｜服装｜组合设置** 三栏等宽布局，移动端自动调整排版。人物参考上传入口放在「组合设置」内，无需跳转页面。
+| 模块 | 能做什么 |
+| --- | --- |
+| **姿势图库** | 1,439 张姿势图（288 组），按系列、分类、视角、关键词搜索，支持原图预览与下载 |
+| **服装图库** | 1,407 套穿搭素材，支持季节、风格、编号筛选 |
+| **脸部图库** | 1,499 张参考图（Face 893 / Styling 606），按用途、发型与关键词筛选 |
+| **双图 / 三图** | 姿势＋服装＋可选人物参考；支持随机搭配、选择脸库素材或上传自己的照片 |
+| **四宫格 / 九宫格** | 每格都是一组**姿势＋服装**搭配，可统一使用一张脸部参考；支持整组重抽、单格重抽和去重 |
+| **导出与提示词** | 预览、复制或下载 PNG，自动整理与当前参考图对应的 AI 创作提示词 |
+| **多语言与离线** | 简体中文、English、日本語；网页使用原生 HTML / CSS / JavaScript，无后端依赖 |
 
-| 姿势参考 | 服装参考 | 组合设置 |
-| --- | --- | --- |
-| 从图库选择姿势，或随机抽取 | 从图库选择服装、随机抽取，或上传自己的图片 | 上传可选人物照片，设置背景、预览、复制与导出 |
+网页宫格输出：四宫格 **2048×2048**，九宫格 **3072×3072**。统一人物参考可以从脸库随机选择、手动选择，或上传自己的照片；上传的照片只在浏览器本地参与拼图。导出的是**创作参考板**，并非 AI 生成的最终人物图。
 
-### 双图 / 三图参考板
-
-- **双图模式**：姿势 + 服装。适合将动作和穿搭要求整理成一张参考图。
-- **三图模式**：姿势 + 服装 + 人物照片。人物照片用于提示 AI 参考面部与发型等特征；移除照片即可恢复双图模式。
-- **随机找灵感**：支持一键随机组合、仅随机姿势或仅随机服装；可限制姿势和服装分类，并选择是否包含双人姿势。
-- **固定顺序**：从左到右依次显示姿势、服装、可选人物参考；可选择白色或浅灰背景，以及显示或隐藏图库图片编号。上传的图片没有图库编号，不会显示假编号。图片等比例完整呈现，不强制裁切。
-- **按需大图预览**：点击「大图预览」才打开弹窗；可直接复制合并图片或下载 PNG。
-- **AI 创作提示词**：自动描述每张参考图的用途及对应位置，支持一键复制文本。
-
-> 本项目负责**参考素材组合与提示词整理**，不调用 AI 生图服务，也不提供自动换装或人脸替换。
-
-## 如何使用
-
-1. 打开「**组合制作**」，选择姿势和服装，或者点击「**一键随机组合**」。
-2. 如需保持特定人物形象，在「**组合设置**」中上传人物照片；不上传也能直接制作双图。
-3. 设置背景及是否显示图库编号，点击「**大图预览**」查看效果。
-4. 复制图片、下载 PNG，或展开「**AI 创作提示词**」复制说明，提供给你的 AI 绘图工具。
-
-## 素材库与其他功能
-
-项目内置 **288 组 / 1,439 张姿势参考图**、**1,407 套服装素材**，支持分类、关键词、多角度浏览和原图下载，并提供简体中文、English、日本語界面。
+## 效果图
 
 <details>
-<summary>查看素材图库与移动端截图</summary>
+<summary>展开查看姿势、服装、脸部图库及手机端</summary>
 
 **姿势图库**
 
-![姿势参考素材浏览](docs/preview.jpg)
+![姿势图库](docs/preview.jpg)
 
 **服装图库**
 
-![服装参考素材浏览](docs/costumes.jpg)
+![服装图库](docs/costumes.jpg)
 
-**移动端**
+**脸部图库**
 
-![手机端素材图库](docs/mobile.jpg)
+![脸部与造型参考图库](docs/portrait.jpg)
+
+**手机端**
+
+![手机端图库](docs/mobile.jpg)
 
 </details>
 
-## 快速开始
+**Agent Skill 组合四宫格**
+
+![四组姿势与服装组合](docs/skill-four-grid.jpg)
+
+**Agent Skill 组合九宫格**
+
+![九组不重复的姿势与服装搭配](docs/skill-nine-grid.jpg)
+
+## 网页怎么用
+
+直接打开 [在线预览](https://gallery.zsj.pp.ua/)：浏览姿势／服装／脸部图库，或进入「组合制作」，切换双图、三图、四宫格、九宫格，选择或随机搭配素材，然后复制图片、下载 PNG 或复制提示词。
+
+本地离线版：
 
 ```bash
+git lfs install
 git clone https://github.com/vculjp/ai-reference-gallery.git
 cd ai-reference-gallery
+git lfs pull
 ```
 
-直接打开 **`index.html`** 即可使用，仓库内包含所需图片资源。网页由原生 HTML、CSS 和 JavaScript 构成，无需后端或运行依赖。
+下载完整素材后双击 `index.html` 即可打开。网页本身**无需 npm、后端或构建**。通过 `file://` 导出使用本地原图的组合图时，按提示选择本项目的 `img/` 文件夹；使用同源 HTTP 网站时无需授权文件夹。
 
-**本地导出注意**：通过 `file://` 打开时，复制或导出组合图需要根据页面提示授权读取项目的 **`img` 文件夹**（含 `pose/` 和 `costume/`）；通过同源 HTTP 网站访问则无需此步骤。复制图片还需要浏览器支持图片剪贴板功能，不能复制时可使用 PNG 下载。
+**素材下载提示：**姿势与服装资源随 Git 仓库提供；新增脸库的 1,499 张高清 PNG 使用 **Git LFS** 管理，原图约 4.5 GiB。克隆前请预留空间，且需确保发布方已将 LFS 对象上传到远程，否则脸部高清预览和导出可能不可用。在线演示是否包含新功能以实际部署版本为准。
 
-## Agent Skill：用自然语言制作参考图
+## Agent Skill：无需下载整个图库
 
-除了网页操作，项目还提供可供 **Codex 等兼容 Agent Skills 的助手**使用的 [`ai-reference-gallery` Skill](.agents/skills/ai-reference-gallery/SKILL.md)。**只安装 Skill 就能搜索素材和生成参考图，不需要克隆整个图库，也不需要手动下载几千张图片。** Skill 自带压缩索引与 Canvas 渲染代码，首次生成时按需下载选中的原图，之后自动复用本地缓存。
+项目内置 [独立 Agent Skill](.agents/skills/ai-reference-gallery/SKILL.md)，可在 Codex 等兼容 Agent Skills 的助手中安装仓库子目录 `.agents/skills/ai-reference-gallery/`，无需克隆多 GB 原图库。
 
-| 能力 | 效果 |
-| --- | --- |
-| 素材搜索 | 中文 / 英文 / 日文关键词、分类、姿势角度与真实素材编号 |
-| 自然语言选图 | `--describe` 识别季节、姿势、部分角度、自然日常偏好及排除条件；无法识别的风格会明确列出 |
-| 随机搭配 | 按条件选姿势和服装，支持固定随机种子、锁定素材，宫格在未锁定素材时避免重复 |
-| 双图 / 三图 | 姿势 + 服装 + 可选本地人物照片；也可上传自己的服装照片 |
-| 批量制作 | 一次生成最多 20 组独立的 PNG 参考板 |
-| 双模式宫格 | `pairs`：每格一组姿势＋服装；`single`：每格只放一张姿势图或服装图 |
-| 宫格尺寸 | 2×2 四宫格 / 3×3 九宫格；单图模式支持 1:1 方形及 3:4 竖版 |
-| 环境与缓存 | `doctor` 环境诊断、按需下载、备用源、SHA-256 缓存校验及下载进度 |
-| 提示词与记录 | 同时导出 `.txt` 提示词和 `.json` 素材编号、格子位置等信息 |
+- 支持自然语言规则筛选、素材 ID、分类和随机种子；无法理解的条件会明确反馈，不会冒充图像语义识别。
+- 支持批量双图／三图、**组合四宫格／九宫格**；Skill 还独有**单图宫格**（每格一张姿势或服装）。
+- 可从脸库选定统一人物参考，也可使用自己的照片；按需下载选中的原图并缓存，不下载整库。
+- 每次导出生成 **PNG 参考图＋TXT 提示词＋JSON 素材记录**。
 
-### 四宫格 / 九宫格效果
+示例：安装 Skill 后，可在任意工作目录用自然语言请求：
 
-**组合四宫格（`pairs`）：**一张图展示 4 组不同的姿势与服装搭配。
+> 用春季穿搭和自然站姿随机生成 9 组不重复搭配，做一个九宫格，附上每格的提示词。
 
-![AI Reference Gallery Skill 四宫格示例](docs/skill-four-grid.jpg)
+也可以从仓库内调用 CLI：
 
-**组合九宫格（`pairs`）：**从站姿与春季服装中随机抽取 9 组组合，**每格的姿势与服装都不重复**。
+```bash
+# 查询脸部素材
+node bin/ai-reference-gallery.cjs catalog --type portrait --limit 5
 
-![AI Reference Gallery Skill 九宫格示例](docs/skill-nine-grid.jpg)
+# 九组姿势＋服装的组合宫格
+node bin/ai-reference-gallery.cjs grid --size 9 --grid-mode pairs --describe "春季自然站姿，不要性感风格" --out output/nine-grid.png
 
-**单图宫格（`single`）：**每格只显示一张姿势图或服装图，可选择方形 2400×2400 或竖版 2400×3200，素材按比例完整显示。
-
-> 所有宫格均为**已有参考素材的排版**，不是 AI 自动换装或生成真人照片。以上宫格命令属于 **Skill**；当前仓库已发布的网页版本以双图 / 三图组合为主。
-
-### 安装 Skill（不需要下载图库）
-
-使用 Codex 自带的 Skill 安装器安装**子目录** `.agents/skills/ai-reference-gallery`（而不是整个仓库），安装完成后重启 Codex 即可在任意项目中调用。例如 Windows PowerShell：
-
-```powershell
-python "$env:USERPROFILE\.codex\skills\.system\skill-installer\scripts\install-skill-from-github.py" --repo vculjp/ai-reference-gallery --path .agents/skills/ai-reference-gallery --method git
+# 单图姿势九宫格（Skill 模式）
+node bin/ai-reference-gallery.cjs grid --size 9 --grid-mode single --grid-source pose --out output/poses.png
 ```
 
-已安装旧版 Skill 的用户需要更新或重新安装才能获得新功能。安装后重启 Codex，即可在**任意工作目录**使用，不要求在网页仓库中运行。
+Skill 的查询不需要浏览器；**导出 PNG 需要 Node.js 22+ 和 Chrome / Edge**，未缓存的原图首次导出需要网络。完整安装和参数见 [Skill 使用说明](.agents/skills/ai-reference-gallery/references/usage.md)。
 
-### 用自然语言调用
+## 给开发者
 
-> `$ai-reference-gallery` 帮我找 9 组春季自然站姿，不要性感风格，姿势和服装都不能重复。生成一张九宫格组合参考图，并输出每格的提示词。
-
-Skill 会用本地分类与关键词规则筛选素材，**不依赖额外 AI API，也不具备对图片风格的视觉识别**。例如「日系」等当前没有可靠分类依据的描述，会在 JSON 中标为 `unsupported`，而不会假装匹配成功。
-
-### 直接使用命令行
-
-也可以在任意目录直接运行（无需启动网站或下载整个图库）。以下是 Windows PowerShell 示例：
-
-```powershell
-$skill = "$env:USERPROFILE\.codex\skills\ai-reference-gallery\scripts\gallery.cjs"
-
-# 1. 检查 Node.js、Chrome/Edge、Skill 运行文件及缓存权限
-node $skill doctor
-
-# 2. 搜索真实姿势素材（无需联网）
-node $skill search --type pose --query "站姿" --limit 5
-
-# 3. 通过自然语言筛选春季服装（可查看 matched / unsupported）
-node $skill search --type outfit --describe "春季穿搭，不要性感风格" --limit 5
-
-# 4. 批量生成 5 张独立的双图参考板
-node $skill compose --pose-category 站姿 --count 5 --seed demo --out-dir output/demo
-
-# 5. 组合四宫格：每格姿势＋服装
-node $skill grid --size 4 --grid-mode pairs --pose-category 站姿 --outfit-category spring --seed four-demo --out output/four-grid.png
-
-# 6. 组合九宫格：按自然语言规则随机选取 9 组不重复的搭配
-node $skill grid --size 9 --grid-mode pairs --describe "春季自然站姿，不要性感风格" --seed spring-demo --out output/nine-grid.png
-
-# 7. 单图九宫格：每格一张不同的姿势图
-node $skill grid --size 9 --grid-mode single --grid-source pose --pose-category 站姿 --out output/poses.png
-
-# 8. 单图四宫格：每格一套不同服装，3:4 竖版
-node $skill grid --size 4 --grid-mode single --grid-source outfit --outfit-category spring --aspect portrait --out output/outfits.png
-
-# 9. 加入自己的角色照片，生成三图参考板
-node $skill compose --pose-id full_sexy_P001_front --outfit-id SPR-0001 --person "C:/Photos/person.png" --out output/my-reference.png
-```
-
-每个输出名称对应三个文件：`xxx.png`（实际合成图）、`xxx.txt`（可复制的 AI 创作提示词）、`xxx.json`（使用的素材和生成信息）。宫格 JSON 还记录每格的位置、素材编号与模式；`--seed` 可复现相同的随机选图结果。**默认不覆盖已存在文件**，需要覆盖时显式传入 `--overwrite`。
-
-**运行要求：**Node.js **22+** 和本机 **Chrome 或 Edge**（`doctor`、`search`、`categories` 无需启动浏览器）。未缓存的素材首次导出需要网络，下载源为项目静态图库，失败时尝试 GitHub Raw；也可指定可信的 `AI_REFERENCE_ASSET_BASE`。本地缓存位于 `~/.cache/ai-reference-gallery/img/`，使用 SHA-256 检查文件变化，损坏时按需重新下载；可通过 `AI_REFERENCE_CACHE_DIR` 修改缓存目录。本地人物照片不会上传到外部服务。无需 npm 依赖、API Key 或云端生图服务。生成文件默认写入**当前工作目录**下的 `output/skill-compositions/` 或 `output/skill-grids/`。
-
-**常见问题：**运行失败先执行 `node $skill doctor`；提示素材不足时放宽筛选，宫格不会在未锁定素材时以重复图片凑数；下载失败时检查网络连接或配置可信静态源；旧版本不认识 `--describe`、`--grid-mode` 时需要重新安装 Skill。
-
-更多参数、批量生成和问题排查请看 [Skill 使用说明](.agents/skills/ai-reference-gallery/references/usage.md)。
-
-## 项目文件
-
-- `index.html` / `app.js`：网页入口与图库交互。
-- `composition-ui.js` / `composition.js`：组合工作台、Canvas 拼接与 PNG 导出。
-- `composition.css` / `style.css`：组合制作与图库样式。
-- `i18n.js`：中英日多语言。
-- `catalog.js` / `costume-catalog.js` / `img/`：素材索引与本地图像。
+- [Catalog v1 素材接口](docs/catalog-api.md)：从三套静态索引生成版本化 JSON 清单，支持本地 CLI / Node.js 查询；**不是在线 HTTP API**。
+- [分发与发布说明](docs/distribution.md)：独立 Skill、GitHub Release、npm CLI 打包及 CI 流程。**npm 包只有正式发布后才能通过 npm / npx 获取**。
+- [贡献指南](CONTRIBUTING.md)：代码规范、测试和素材授权注意事项。
 
 ## 版权与致谢
 
-- **项目维护者 X**：[@vculjp](https://x.com/vculjp)。
-- **代码**采用 [MIT License](LICENSE)；图片、缩略图及来源衍生索引**不适用 MIT 代码许可**，使用和再分发请参阅 [ASSETS.md](ASSETS.md)。
-- **姿势素材**：[AI Pose Gallery](https://ai-pose-gallery.pages.dev/)；**服装素材**：[AI Costume Gallery](https://ai-costume-gallery.pages.dev/)。
-- **原作者**：ギア（[@giaaibusi](https://x.com/giaaibusi)）。
+项目**代码**采用 [MIT License](LICENSE)；图片及来源衍生数据不自动适用 MIT，使用或再分发请遵守 [ASSETS.md](ASSETS.md) 所述授权条件。
+
+素材来源与原作者：
+- [AI Pose Gallery](https://ai-pose-gallery.pages.dev/)（姿势）与 [AI Costume Gallery](https://ai-costume-gallery.pages.dev/)（服装）：**ギア**（[@giaaibusi](https://x.com/giaaibusi)）。
+- [AI Portrait Gallery](https://ai-portrait-gallery.pages.dev/)（脸部与造型）：**あぎ**。
+
+本项目由 [@vculjp](https://x.com/vculjp) 整理维护，不代表上述素材网站的官方项目。
