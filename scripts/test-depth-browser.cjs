@@ -310,6 +310,32 @@ async function main() {
         tile.querySelectorAll(".compose-grid-lock").length!==2 ||
         !tile.querySelector(".compose-grid-detail-link")))
         throw Error("Missing independent pose/outfit controls, locks or single-board tools");
+      for (const tile of tiles()) {
+        const heading = tile.querySelector(".compose-grid-tile-head");
+        const details = heading.querySelector(".compose-grid-detail-link");
+        const controls = heading.querySelectorAll(".compose-grid-icon-button");
+        if (!details || !details.textContent.includes("单格预览与提示词") ||
+            heading.textContent.includes("第 1 格") ||
+            tile.querySelector(".compose-grid-tile-foot") ||
+            controls.length !== 2 || [...controls].some(button =>
+              button.textContent.trim() || !button.querySelector("svg[aria-hidden='true']")) ||
+            [...tile.querySelectorAll(".compose-grid-lock")].some(button =>
+              button.textContent.trim() || !button.querySelector("svg[aria-hidden='true']")))
+          throw Error("Grid header/lock icons did not replace the redundant text and emojis");
+        const detailBounds = details.getBoundingClientRect();
+        const toolsBounds = heading.querySelector(".compose-grid-tile-tools").getBoundingClientRect();
+        if (detailBounds.right > toolsBounds.left + 1)
+          throw Error("Grid header preview label overlaps the icon actions");
+      }
+      tiles()[0].querySelector(".compose-grid-pair-lock").click();
+      if (tiles()[0].querySelector(".compose-grid-pair-lock").getAttribute("aria-pressed")!=="true" ||
+          !tiles()[0].querySelector(".compose-grid-reroll-pair").disabled ||
+          [...tiles()[0].querySelectorAll(".compose-grid-lock")].some(button =>
+            button.getAttribute("aria-pressed")!=="true"))
+        throw Error("Icon-only whole-pair lock did not lock both image references");
+      tiles()[0].querySelector(".compose-grid-pair-lock").click();
+      if (tiles()[0].querySelector(".compose-grid-reroll-pair").disabled)
+        throw Error("Whole-pair unlock did not restore the reroll icon action");
       const beforeEdit = images(0);
       const untouched = images(1);
       tiles()[0].querySelectorAll(".compose-grid-pill")[1].click();
@@ -379,7 +405,8 @@ async function main() {
       if (tiles().some(tile =>
         tile.querySelectorAll(".compose-grid-pill").length!==6 ||
         tile.querySelectorAll(".compose-grid-lock").length!==2 ||
-        !tile.querySelector(".compose-grid-detail-link")))
+        !tile.querySelector(".compose-grid-tile-head .compose-grid-detail-link") ||
+        tile.querySelectorAll(".compose-grid-tile-head .compose-grid-icon-button").length!==2))
         throw Error("Nine-grid missing independent edit/lock/prompt controls");
       get("compose-grid-prompt-mode").value = "normal";
       get("compose-grid-prompt-mode").dispatchEvent(new Event("change", {bubbles:true}));
@@ -434,6 +461,27 @@ async function main() {
     assert.ok(details.compositionWidth > 0);
     assert.ok(details.depthBytes > 1000);
     assert.ok(details.count.includes("5784") || details.count.includes("5,784"));
+    await chromeCommand("Emulation.setDeviceMetricsOverride", {
+      width:390, height:850, deviceScaleFactor:1, mobile:false
+    });
+    const mobileGridHeader = await evaluate(`(() => {
+      document.getElementById("compose-mode-nine").click();
+      const tile = document.querySelector("#compose-grid-tiles .compose-grid-tile");
+      const details = tile.querySelector(".compose-grid-detail-link");
+      const actions = tile.querySelector(".compose-grid-tile-tools");
+      const box = element => element.getBoundingClientRect();
+      return {
+        tile:{left:box(tile).left, right:box(tile).right},
+        details:{left:box(details).left, right:box(details).right},
+        actions:{left:box(actions).left, right:box(actions).right},
+        twoRows:box(actions).top >= box(details).bottom - 1
+      };
+    })()`);
+    if (!mobileGridHeader.twoRows ||
+        mobileGridHeader.details.right > mobileGridHeader.tile.right + 1 ||
+        mobileGridHeader.actions.right > mobileGridHeader.tile.right + 1)
+      throw Error("Nine-grid header overflows on mobile: " + JSON.stringify(mobileGridHeader));
+    await chromeCommand("Emulation.clearDeviceMetricsOverride", {});
     console.log("Depth browser smoke passed:", details);
   } finally {
     ws?.close();

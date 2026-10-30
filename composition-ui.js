@@ -253,25 +253,70 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     $("compose-grid-status").textContent = key ? t(key, ...args) : "";
     $("compose-grid-status").dataset.status = key === "composeGridInsufficient" ? "error" : "";
   }
+  function gridActionIcon(kind) {
+    // Small outline icons drawn with the same stroke as the rest of the site.
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("width", "17");
+    svg.setAttribute("height", "17");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "1.8");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.setAttribute("aria-hidden", "true");
+    const paths = {
+      lock: ["M5 11V7a7 7 0 0 1 14 0v4", "M5 11h14v10H5z"],
+      unlock: ["M5 11V7a7 7 0 0 1 13.5-2.5", "M5 11h14v10H5z"],
+      reroll: ["M20 7v5h-5", "M4 17v-5h5",
+        "M5.7 9A7 7 0 0 1 18.9 7L20 12",
+        "M18.3 15A7 7 0 0 1 5.1 17L4 12"],
+      preview: ["M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z",
+        "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6"]
+    };
+    for (const d of paths[kind]) {
+      const path = document.createElementNS(ns, "path");
+      path.setAttribute("d", d);
+      svg.append(path);
+    }
+    return svg;
+  }
   function renderGridTiles() {
     const list = $("compose-grid-tiles");
     list.style.setProperty("--grid-count", state.composition.mode === "nine" ? 3 : 2);
+    list.classList.toggle("compose-grid-tiles-nine", state.composition.mode === "nine");
     const tiles = state.composition.gridItems.map((pair, index) => {
       const tile = element("article", "compose-grid-tile");
       const heading = element("div", "compose-grid-tile-head");
-      heading.append(element("span", "", t("composeGridCellNumber", index + 1)));
-      const pairLock = element("button", "compose-grid-pair-lock",
-        t(isLocked(pair, "pose") && isLocked(pair, "outfit") ?
-          "composeGridPairUnlock" : "composeGridPairLock"));
+      const details = element("button", "compose-grid-detail-link");
+      details.type = "button";
+      details.append(gridActionIcon("preview"), document.createTextNode(t("composeGridSingleView")));
+      details.setAttribute("aria-label", t("composeGridCellNumber", index + 1) +
+        " · " + t("composeGridSingleView"));
+      details.onclick = () => void openGridSingle(index);
+      heading.append(details);
+      const headerActions = element("div", "compose-grid-tile-tools");
+      const pairLocked = isLocked(pair, "pose") && isLocked(pair, "outfit");
+      const pairLock = element("button", "compose-grid-pair-lock compose-grid-icon-button");
       pairLock.type = "button";
-      pairLock.setAttribute("aria-pressed", String(isLocked(pair, "pose") && isLocked(pair, "outfit")));
+      pairLock.append(gridActionIcon(pairLocked ? "lock" : "unlock"));
+      pairLock.title = t(pairLocked ? "composeGridPairUnlock" : "composeGridPairLock");
+      pairLock.setAttribute("aria-label", t("composeGridCellNumber", index + 1) +
+        " · " + pairLock.title);
+      pairLock.setAttribute("aria-pressed", String(pairLocked));
       pairLock.onclick = () => toggleGridPairLock(index);
-      heading.append(pairLock);
-      const reroll = element("button", "compose-grid-reroll-pair", t("composeGridRerollPairShort"));
+      headerActions.append(pairLock);
+      const reroll = element("button", "compose-grid-reroll-pair compose-grid-icon-button");
       reroll.type = "button";
-      reroll.disabled = isLocked(pair, "pose") && isLocked(pair, "outfit");
+      reroll.append(gridActionIcon("reroll"));
+      reroll.title = t("composeGridReroll");
+      reroll.setAttribute("aria-label", t("composeGridCellNumber", index + 1) +
+        " · " + reroll.title);
+      reroll.disabled = pairLocked;
       reroll.onclick = () => rerollGridTile(index);
-      heading.append(reroll);
+      headerActions.append(reroll);
+      heading.append(headerActions);
       tile.append(heading);
       const images = element("div", "compose-grid-tile-images");
       for (const [entry, role] of [[gridPose(pair.pose, pair), "pose"], [gridOutfit(pair), "outfit"]]) {
@@ -285,10 +330,11 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
         if (state.composition.gridLabels && !entry.uploadUrl) {
           half.append(element("span", "compose-grid-tile-code", entry.id));
         }
-        const lock = element("button", "compose-grid-lock" + (isLocked(pair, role) ? " is-locked" : ""),
-          isLocked(pair, role) ? "🔒" : "🔓");
+        const locked = isLocked(pair, role);
+        const lock = element("button", "compose-grid-lock" + (locked ? " is-locked" : ""));
         lock.type = "button";
-        lock.setAttribute("aria-pressed", String(isLocked(pair, role)));
+        lock.append(gridActionIcon(locked ? "lock" : "unlock"));
+        lock.setAttribute("aria-pressed", String(locked));
         lock.setAttribute("aria-label", t("composeGridLockLabel", index + 1, role, isLocked(pair, role)));
         lock.onclick = () => toggleGridLock(index, role);
         half.append(lock);
@@ -311,12 +357,6 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
         images.append(column);
       }
       tile.append(images);
-      const foot = element("div", "compose-grid-tile-foot");
-      const details = element("button", "compose-grid-detail-link", t("composeGridSingleView"));
-      details.type = "button";
-      details.onclick = () => void openGridSingle(index);
-      foot.append(details);
-      tile.append(foot);
       return tile;
     });
     list.replaceChildren(...tiles);
