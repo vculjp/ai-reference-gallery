@@ -174,6 +174,13 @@
             </label>
             <details class="compose-prompt-box compose-grid-prompt-box" id="compose-grid-prompt-box" open>
               <summary id="compose-grid-prompt-title">AI 创作提示词</summary>
+              <label class="compose-prompt-mode-control">
+                <span id="compose-grid-prompt-mode-label">生图提示词模式</span>
+                <select id="compose-grid-prompt-mode">
+                  <option value="normal">普通 AI 生图（默认）</option>
+                  <option value="professional">专业 Depth 控制</option>
+                </select>
+              </label>
               <p id="compose-grid-prompt-help">按宫格位置逐组说明姿势、服装与人物参考，复制后可交给支持参考图的 AI 工具。</p>
               <textarea id="compose-grid-prompt-text" rows="6" readonly aria-label="宫格 AI 创作提示词"></textarea>
               <div class="compose-prompt-actions">
@@ -186,6 +193,7 @@
               <button type="button" id="compose-grid-preview" class="compose-preview-button" disabled>大图预览</button>
               <button type="button" id="compose-grid-copy" class="compose-secondary" disabled>复制宫格</button>
               <button type="button" id="compose-grid-download" disabled>下载 PNG</button>
+              <button type="button" id="compose-grid-download-panels" class="compose-secondary" disabled>逐格高清导出 ZIP</button>
             </div>
           </section>
         </div>
@@ -262,6 +270,13 @@
         </label>
         <details class="compose-prompt-box" id="compose-prompt-box">
           <summary id="compose-prompt-title">AI 创作提示词</summary>
+          <label class="compose-prompt-mode-control">
+            <span id="compose-prompt-mode-label">生图提示词模式</span>
+            <select id="compose-prompt-mode">
+              <option value="normal">普通 AI 生图（默认）</option>
+              <option value="professional">专业 Depth 控制</option>
+            </select>
+          </label>
           <p id="compose-prompt-help">复制组合图与提示词，可配合自己的角色脸部参考图使用。</p>
           <textarea id="compose-prompt-text" rows="7" readonly aria-label="AI 创作提示词"></textarea>
           <div class="compose-prompt-actions">
@@ -327,6 +342,7 @@
   <script src="portrait-catalog.js" defer></script>
   <script src="i18n.js" defer></script>
   <script src="composition.js" defer></script>
+  <script src="grid-export.js" defer></script>
   <script src="composition-ui.js" defer></script>
   <script src="app.js" defer></script>
 </body>

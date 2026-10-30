@@ -22,7 +22,7 @@
   "scripts": {
     "build:catalog": "node .agents/skills/ai-reference-gallery/scripts/build-bundle.cjs",
     "check:catalog": "node .agents/skills/ai-reference-gallery/scripts/build-bundle.cjs --check",
-    "test": "node --test scripts/test-distribution.cjs",
+    "test": "node --test scripts/test-distribution.cjs scripts/test-grid-export.cjs",
     "test:full": "node test_i18n.cjs && node --test scripts/test-skill.cjs",
     "preview": "node scripts/serve-local.cjs",
     "prepack": "node .agents/skills/ai-reference-gallery/scripts/build-bundle.cjs --check"

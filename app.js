@@ -9,7 +9,7 @@ const state = {
   portraitSection: "", portraitTarget: "reference",
   visibleCount: 60, current: -1, selected: null,
   composition: {
-    pose: null, depth: null, referenceType: "pose", second: null, person: null, background: "white", labels: true,
+    pose: null, depth: null, referenceType: "pose", promptMode: "normal", second: null, person: null, background: "white", labels: true,
     mode: "reference", gridItems: [],
     gridBackground: "white", gridLabels: true, gridUsePerson: false
   }

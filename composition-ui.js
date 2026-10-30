@@ -148,7 +148,7 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     });
     list.replaceChildren(...tiles);
     const complete = state.composition.gridItems.length === gridCount();
-    for (const id of ["compose-grid-preview", "compose-grid-copy", "compose-grid-download"]) {
+    for (const id of ["compose-grid-preview", "compose-grid-copy", "compose-grid-download", "compose-grid-download-panels"]) {
       $(id).disabled = !complete;
     }
     $("compose-grid-settings-title").textContent =
@@ -260,6 +260,9 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
       "compose-costume-label": "composeSecond",
       "compose-reference-depth-label": "composeReferenceDepthCheckbox",
       "compose-grid-depth-label": "composeGridUseDepth",
+      "compose-prompt-mode-label": "composePromptModeLabel",
+      "compose-grid-prompt-mode-label": "composePromptModeLabel",
+      "compose-grid-download-panels": "composeGridExportPanels",
       "compose-random-title": "composeRandomTitle", "compose-random-hint": "composeRandomHint",
       "compose-random-pair-label": "composeRandomPair",
       "compose-random-pose": "composeRandomPose", "compose-random-costume": "composeRandomCostume",
@@ -311,6 +314,11 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
       "compose-grid-copy": "composeGridCopy", "compose-grid-download": "composeDownload"
     };
     for (const [id, key] of Object.entries(keys)) $(id).textContent = t(key);
+    for (const id of ["compose-prompt-mode", "compose-grid-prompt-mode"]) {
+      const select = $(id);
+      select.options[0].textContent = t("composePromptModeNormal");
+      select.options[1].textContent = t("composePromptModeProfessional");
+    }
     refreshReferenceControls();
     $("compose-preview-close").setAttribute("aria-label", t("close"));
     $("compose-random-filters").setAttribute("aria-label", t("composeRandomTitle"));
@@ -377,6 +385,7 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
   function setReferenceType(type) {
     if (!["pose", "depth"].includes(type)) return;
     state.composition.referenceType = type;
+    if (type === "pose") state.composition.promptMode = "normal";
     if (type === "depth" && !state.composition.depth?.uploadUrl) syncDepthToPose();
     refreshReferenceControls();
     updateComposition();
@@ -386,6 +395,10 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     const depth = state.composition.referenceType === "depth";
     $("compose-reference-depth").checked = depth;
     $("compose-grid-use-depth").checked = depth;
+    for (const id of ["compose-prompt-mode", "compose-grid-prompt-mode"]) {
+      $(id).querySelector('[value="professional"]').disabled = !depth;
+      $(id).value = depth ? state.composition.promptMode : "normal";
+    }
     $("compose-pose-label").textContent = t(depth ? "composeDepthFirst" : "composePose");
     $("compose-pose-empty").textContent = t(depth ? "composeDepthEmpty" : "composeEmptyPose");
     $("compose-choose-pose").textContent = t(depth ? "composeChooseDepth" : "choosePose");
@@ -397,7 +410,8 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     $("compose-download-depth").hidden = !depth || !selectedReference();
     $("compose-grid-heading").textContent = t(depth ? "composeGridDepthHeading" : "composeGridHeading");
     $("compose-grid-hint").textContent = t(depth ? "composeGridDepthHint" : "composeGridHint");
-    $("compose-grid-prompt-help").textContent = t(depth ? "composeGridDepthPromptHelp" : "composeGridPromptHelp");
+    $("compose-grid-prompt-help").textContent = t(!depth ? "composeGridPromptHelp" :
+      state.composition.promptMode === "professional" ? "composeGridDepthPromptHelp" : "composeGridDepthVisualHelp");
     $("compose-random-title").textContent = t(depth ? "composeDepthRandomTitle" : "composeRandomTitle");
     $("compose-random-hint").textContent = t(depth ? "composeDepthRandomHint" : "composeRandomHint");
   }
@@ -493,15 +507,15 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
       $("compose-prompt-text").value = t("composePromptEmpty");
       return;
     }
-    if (person) {
-      $("compose-prompt-text").value = t("composePromptThree", pose.id,
-        t("composePosLeft"), second.id, t("composePosMiddleHorizontal"), t("composePosRight")) +
-        (state.composition.referenceType === "depth" ? "\n\n" + t("composeDepthPrompt", pose.id) : "");
-      return;
-    }
-    $("compose-prompt-text").value = t("composePrompt", pose.id,
-      t("composePosLeft"), second.id, t("composePosRight")) +
-      (state.composition.referenceType === "depth" ? "\n\n" + t("composeDepthPrompt", pose.id) : "");
+    const base = person
+      ? t("composePromptThree", pose.id, t("composePosLeft"), second.id,
+        t("composePosMiddleHorizontal"), t("composePosRight"))
+      : t("composePrompt", pose.id, t("composePosLeft"), second.id, t("composePosRight"));
+    const depth = state.composition.referenceType === "depth";
+    const extra = !depth ? "" : state.composition.promptMode === "professional"
+      ? t("composeDepthProfessionalPrompt", pose.localFile ? pose.localFile.name : pose.id + ".png")
+      : t("composeDepthVisualPrompt");
+    $("compose-prompt-text").value = base + (extra ? "\n\n" + extra : "");
   }
   function updateGridPrompt() {
     const complete = isGrid() && hasCompleteSelection();
@@ -525,9 +539,17 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
         outfit.id, label(outfit, "category")));
     $("compose-grid-prompt-text").value = [
       t(depthMode ? "composeGridDepthIntro" : "composeGridPromptIntro", count, columns), shared,
-      ...(depthMode ? [t("composeDepthGridPrompt")] : []), ...pairLines,
+      ...(depthMode ? [t(state.composition.promptMode === "professional"
+        ? "composeDepthProfessionalGridPrompt" : "composeDepthVisualGridPrompt")] : []), ...pairLines,
       t("composeGridPromptFinish")
     ].join("\n\n");
+  }
+  function setPromptMode(value) {
+    state.composition.promptMode = value === "professional" &&
+      state.composition.referenceType === "depth" ? "professional" : "normal";
+    refreshReferenceControls();
+    updatePrompt();
+    updateGridPrompt();
   }
   function setCopyStatus(key, error = false) {
     setStatus("compose-copy-status", key, error);
@@ -735,6 +757,59 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
       $("compose-preview-download").disabled = !complete;
     }
   }
+  async function downloadGridPanels() {
+    if (!isGrid() || !hasCompleteSelection()) return;
+    if (composition.needsFolder() && !(await chooseLocalFolder())) return;
+    const button = $("compose-grid-download-panels");
+    const options = compositionOptions();
+    const count = options.items.length;
+    const professional = state.composition.promptMode === "professional" &&
+      state.composition.referenceType === "depth";
+    const prompt = $("compose-grid-prompt-text").value;
+    button.disabled = true;
+    try {
+      const files = [];
+      for (let index = 0; index < count; index++) {
+        $("compose-grid-status").textContent = t("composeGridExportingPanel", index + 1, count);
+        const {pose, outfit} = options.items[index];
+        const prefix = String(index + 1).padStart(2, "0");
+        const board = await composition.exportPNG({
+          mode: "reference", pose, second: outfit, person: options.person,
+          background: options.background, labels: options.labels
+        });
+        files.push({name: prefix + "_reference.png", blob: board});
+        if (professional) {
+          // Keep original PNG bytes, never clip or re-encode the Depth image.
+          files.push({name: prefix + "_depth.png", blob: await composition.exportDepthOriginal(pose)});
+        }
+      }
+      files.push({name: "prompt.txt", blob: new Blob([
+        t(professional ? "composeGridZipProfessionalHelp" : "composeGridZipNormalHelp"),
+        "\n\n", prompt
+      ], {type: "text/plain;charset=utf-8"})});
+      const archive = await window.ReferenceGridZIP.create(files);
+      const href = URL.createObjectURL(archive);
+      const link = element("a");
+      link.href = href;
+      link.download = `${count}grid_${professional ? "depth_control" : "references"}.zip`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(href), 30000);
+      setComposeStatus("composeGridExportZipSaved");
+    } catch (err) {
+      if (["LOCAL_IMAGE_NOT_FOUND", "LOCAL_ACCESS_REQUIRED"].includes(err.message)) {
+        composition.clearFiles();
+        syncComposeFolderNotice();
+        setComposeStatus("composeMissingFile");
+      } else {
+        setComposeStatus(err.message === "IMAGE_LOAD_FAILED" && location.protocol !== "file:"
+          ? "composeOnlineImageError" : "composeExportError");
+      }
+    } finally {
+      button.disabled = !isGrid() || !hasCompleteSelection();
+    }
+  }
   async function uploadSecondImage(file) {
     if (!file) return;
     if (!validImageFile(file)) {
@@ -788,6 +863,9 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     updateComposition(["person"]);
   }
   function bind() {
+    for (const id of ["compose-prompt-mode", "compose-grid-prompt-mode"]) {
+      $(id).onchange = (event) => setPromptMode(event.target.value);
+    }
     $("compose-reference-depth").onchange = (event) =>
       setReferenceType(event.target.checked ? "depth" : "pose");
     $("compose-grid-use-depth").onchange = (event) =>
@@ -831,6 +909,7 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     $("compose-grid-preview").onclick = openPreview;
     $("compose-grid-copy").onclick = copyMergedImage;
     $("compose-grid-download").onclick = downloadComposition;
+    $("compose-grid-download-panels").onclick = downloadGridPanels;
     $("compose-open-preview").onclick = openPreview;
     $("compose-preview-close").onclick = closePreview;
     $("compose-preview-copy").onclick = copyMergedImage;

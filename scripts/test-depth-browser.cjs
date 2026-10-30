@@ -75,7 +75,7 @@ async function main() {
           ws.send(JSON.stringify({ id: requestId, method: "Runtime.evaluate",
             params: { expression, awaitPromise: true, returnByValue: true } }));
         }),
-        sleep(25000).then(() => { throw new Error("Browser test timeout"); })
+        sleep(120000).then(() => { throw new Error("Browser test timeout"); })
       ]);
       if (result.exceptionDetails) {
         throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
@@ -120,6 +120,8 @@ async function main() {
         throw Error("Depth control is not visible in reference mode");
       if (get("compose-pose-id").textContent !== depthID) throw Error("Depth not shown in shared slot");
       if (!get("compose-pose-preview").querySelector("img").src.includes("/img/depth/thumbs/")) throw Error("Depth thumbnail absent");
+      if (get("compose-prompt-mode").value !== "normal")
+        throw Error("Default reference prompt incorrectly requires professional Depth conditioning");
       if (document.querySelectorAll("#compose-workbench .compose-slot").length !== 2) throw Error("Pose and Depth not unified");
       get("compose-reference-depth").click();
       if (!get("compose-pose-preview").querySelector("img").src.includes("/img/pose/")) throw Error("Pose mode did not update reference");
@@ -131,6 +133,14 @@ async function main() {
       document.querySelector("#grid .card").click();
       get("add-to-compose").click();
       if (get("compose-open-preview").disabled) throw Error("Composition incomplete");
+      if (/ControlNet|原始 Depth PNG/.test(get("compose-prompt-text").value))
+        throw Error("Default reference prompt incorrectly requires professional Depth conditioning");
+      get("compose-prompt-mode").value = "professional";
+      get("compose-prompt-mode").dispatchEvent(new Event("change", {bubbles:true}));
+      if (!/ControlNet/.test(get("compose-prompt-text").value))
+        throw Error("Professional reference prompt does not explain Depth controls");
+      get("compose-prompt-mode").value = "normal";
+      get("compose-prompt-mode").dispatchEvent(new Event("change", {bubbles:true}));
       get("compose-open-preview").click();
       let previewOK = false;
       for (let n=0;n<40;n++){ if(get("compose-placeholder").hidden){previewOK=true;break;} await wait(200); }
@@ -138,14 +148,84 @@ async function main() {
       const width = get("compose-canvas").width;
       get("compose-preview-close").click();
       get("compose-mode-four").click();
+      const originalClick = HTMLAnchorElement.prototype.click;
+      window.__panelArchives = [];
+      HTMLAnchorElement.prototype.click = function() {
+        if (this.download?.endsWith(".zip")) {
+          const name = this.download;
+          window.__panelArchives.push({name, ready:fetch(this.href).then(r=>r.blob())});
+        } else originalClick.call(this);
+      };
+      const readZip = async (blob) => {
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        const view = new DataView(bytes.buffer);
+        let offset = 0, entries = [];
+        while (view.getUint32(offset, true) === 0x04034b50) {
+          const len = view.getUint16(offset + 26, true);
+          const extra = view.getUint16(offset + 28, true);
+          const size = view.getUint32(offset + 18, true);
+          const name = new TextDecoder().decode(bytes.subarray(offset + 30, offset + 30 + len));
+          const start = offset + 30 + len + extra;
+          entries.push({name, size, data:bytes.slice(start,start+size)});
+          offset = start + size;
+        }
+        if (view.getUint32(offset, true) !== 0x02014b50)
+          throw Error("Invalid ZIP central directory");
+        return entries;
+      };
+      const exportZip = async (expected) => {
+        const previous = window.__panelArchives.length;
+        get("compose-grid-download-panels").click();
+        for (let n = 0; n < 900; n++) {
+          if (window.__panelArchives.length > previous) break;
+          await wait(100);
+        }
+        if (window.__panelArchives.length <= previous)
+          throw Error("Per-panel ZIP not downloaded: "+get("compose-grid-status").textContent);
+        const info = window.__panelArchives.at(-1);
+        const entries = await readZip(await info.ready);
+        if (entries.length !== expected) throw Error("Wrong ZIP entry count: "+entries.length+" / "+expected);
+        for (const entry of entries.filter(x=>x.name.endsWith(".png"))) {
+          if (entry.data.slice(0,8).join(",") !== "137,80,78,71,13,10,26,10")
+            throw Error("Invalid PNG in ZIP: "+entry.name);
+        }
+        return {name:info.name,entries};
+      };
       if (get("compose-grid-use-depth").closest(".compose-grid-sidebar") === null)
         throw Error("Grid switch not inside the settings sidebar");
       if (!get("compose-grid-use-depth").checked) throw Error("Grid switch lost shared mode");
+      if (get("compose-grid-prompt-mode").value !== "normal" ||
+          /ControlNet|原始 Depth PNG/.test(get("compose-grid-prompt-text").value))
+        throw Error("Default grid prompt requests unavailable professional Depth functionality");
+      const standard = await exportZip(5);
+      if (!standard.entries.some(x=>x.name==="04_reference.png") ||
+          standard.entries.some(x=>x.name.endsWith("_depth.png")))
+        throw Error("Standard ZIP should contain four independent reference boards only");
+      get("compose-grid-prompt-mode").value = "professional";
+      get("compose-grid-prompt-mode").dispatchEvent(new Event("change", {bubbles:true}));
+      if (!/ControlNet/.test(get("compose-grid-prompt-text").value))
+        throw Error("Professional grid prompt does not explain Depth conditioning");
+      const professional = await exportZip(9);
+      const originalDepthBytes = new Uint8Array(await
+        ReferenceComposition.exportDepthOriginal({
+          original:"img/depth/original/"+document.querySelector("#compose-grid-tiles img").alt+".png"
+        }).then(x=>x.arrayBuffer()));
+      const packedDepth = professional.entries.find(x=>x.name==="01_depth.png");
+      if (!packedDepth || packedDepth.data.length !== originalDepthBytes.length ||
+          packedDepth.data.some((byte,i)=>byte !== originalDepthBytes[i]))
+        throw Error("Professional ZIP does not contain untouched Depth originals");
+      if (professional.entries.filter(x=>x.name.endsWith("_depth.png")).length!==4)
+        throw Error("Professional ZIP lacks four Depth files");
       const cell = document.querySelector("#compose-grid-tiles .compose-grid-tile");
       if (!cell || !cell.querySelector("img").src.includes("/img/depth/thumbs/")) throw Error("Depth grid not active");
       get("compose-mode-nine").click();
       if (document.querySelectorAll("#compose-grid-tiles .compose-grid-tile").length !== 9)
         throw Error("Nine-grid missing cells");
+      get("compose-grid-prompt-mode").value = "normal";
+      get("compose-grid-prompt-mode").dispatchEvent(new Event("change", {bubbles:true}));
+      const nineZip = await exportZip(10);
+      if (!nineZip.entries.some(x=>x.name==="09_reference.png"))
+        throw Error("Nine-grid individual export missing ninth reference");
       if (!document.querySelector("#compose-grid-tiles .compose-grid-tile img").src.includes("/img/depth/thumbs/"))
         throw Error("Nine-grid depth not shared");
       get("compose-grid-use-depth").click();

@@ -254,7 +254,7 @@ test("runtime modules load once, in dependency order, with composition CSS isola
   const scripts = [...html.matchAll(/<script src="([^"]+)" defer><\/script>/g)].map((m) => m[1]);
   assert.deepEqual(scripts, [
     "catalog.js", "depth-catalog.js", "costume-catalog.js", "portrait-catalog.js", "i18n.js",
-    "composition.js", "composition-ui.js", "app.js"
+    "composition.js", "grid-export.js", "composition-ui.js", "app.js"
   ]);
   const galleryCSS = fs.readFileSync(path.join(root, "style.css"), "utf8");
   const composeCSS = fs.readFileSync(path.join(root, "composition.css"), "utf8");
