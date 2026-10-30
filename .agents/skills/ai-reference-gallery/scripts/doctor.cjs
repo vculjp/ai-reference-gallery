@@ -6,6 +6,7 @@ const path = require("node:path");
 const zlib = require("node:zlib");
 const { browserExecutable } = require("./render.cjs");
 const { cacheDir } = require("./asset-store.cjs");
+const { loadManifest } = require("./catalog-api.cjs");
 
 function diagnostics(skillRoot) {
   const checks = [];
@@ -18,13 +19,21 @@ function diagnostics(skillRoot) {
   const bundled = path.join(skillRoot, "data", "runtime.json.gz");
   try {
     const data = JSON.parse(zlib.gunzipSync(fs.readFileSync(bundled)).toString("utf8"));
-    const ok = ["catalog.js", "costume-catalog.js", "i18n.js", "composition.js"]
+    const ok = ["i18n.js", "composition.js"]
       .every((filename) => typeof data[filename] === "string" && data[filename].length > 0);
     checks.push({ name: "bundle", ok, value: path.basename(bundled),
       hint: ok ? undefined : "Reinstall the complete skill including data/runtime.json.gz" });
   } catch (err) {
     checks.push({ name: "bundle", ok: false, value: err.code || err.message,
       hint: "Reinstall the complete skill including data/runtime.json.gz" });
+  }
+  try {
+    const manifest = loadManifest();
+    checks.push({ name: "catalog-v1", ok: true,
+      value: manifest.counts });
+  } catch (err) {
+    checks.push({ name: "catalog-v1", ok: false, value: err.message,
+      hint: "Reinstall the complete Skill including data/catalog-v1.json.gz" });
   }
   const directory = cacheDir();
   try {

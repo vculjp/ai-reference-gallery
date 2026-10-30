@@ -1,0 +1,69 @@
+name: Release
+
+# Push a version tag to build a GitHub Release. npm publish requires NPM_TOKEN.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            .agents/
+            bin/
+            scripts/
+            metadata/
+            README.md
+            ASSETS.md
+            LICENSE
+            package.json
+            catalog.js
+            costume-catalog.js
+            composition.js
+            i18n.js
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: https://registry.npmjs.org
+      - name: Verify tag and version match
+        run: |
+          VERSION="$(node -p 'require("./package.json").version')"
+          test "$GITHUB_REF_NAME" = "v$VERSION" || {
+            echo "Tag $GITHUB_REF_NAME must equal v$VERSION"; exit 1;
+          }
+      - name: Test source and generated catalog before release
+        run: |
+          npm run check:catalog
+          npm test
+      - name: Package the portable Skill and npm CLI
+        run: |
+          mkdir -p .release/ai-reference-gallery
+          cp -R .agents/skills/ai-reference-gallery/. .release/ai-reference-gallery/
+          cp ASSETS.md .release/ai-reference-gallery/ASSETS.md
+          cp LICENSE .release/ai-reference-gallery/LICENSE
+          (cd .release && zip -qr "ai-reference-gallery-skill-$GITHUB_REF_NAME.zip" ai-reference-gallery)
+          npm pack --pack-destination .release
+          cd .release
+          sha256sum *.zip *.tgz > SHA256SUMS.txt
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            .release/*.zip .release/*.tgz .release/SHA256SUMS.txt \
+            --title "AI Reference Gallery $GITHUB_REF_NAME" --generate-notes --verify-tag
+      - name: Publish npm package (optional)
+        if: env.NPM_TOKEN != ''
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public

@@ -127,6 +127,12 @@ async function main() {
     document.querySelector('#category').dispatchEvent(new Event('change',{bubbles:true}));`);
   await shot("costumes.jpg");
 
+  await evaluate("document.querySelector('#type-portrait').click()");
+  if (await evaluate("document.querySelectorAll('.card').length") === 0) {
+    throw new Error("Portrait gallery did not render any cards.");
+  }
+  await shot("portrait.jpg");
+
   await evaluate(`document.querySelector('#type-pose').click();
     [...document.querySelectorAll('#series button')].find(x=>/标准/.test(x.textContent))?.click();
     document.querySelector('.card').click();

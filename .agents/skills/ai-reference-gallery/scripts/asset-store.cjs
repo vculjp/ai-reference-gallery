@@ -13,7 +13,7 @@ const sources = [
   "https://gallery.zsj.pp.ua/",
   "https://raw.githubusercontent.com/vculjp/ai-reference-gallery/main/"
 ];
-const imagePath = /^img\/(?:pose|costume)\/[a-z0-9_-]+\/original\/[a-zA-Z0-9_.-]+\.(?:png|jpg|jpeg|webp)$/;
+const imagePath = /^img\/(?:pose|costume)\/[a-z0-9_-]+\/original\/[a-zA-Z0-9_.-]+\.(?:png|jpg|jpeg|webp)$|^img\/portrait\/original\/[a-z0-9]{11}\.png$/;
 const cacheDir = () => path.resolve(process.env.AI_REFERENCE_CACHE_DIR ||
   path.join(os.homedir(), ".cache", "ai-reference-gallery"));
 const bases = () => process.env.AI_REFERENCE_ASSET_BASE ?
@@ -103,13 +103,20 @@ async function download(relative) {
   fs.rmSync(target + ".sha256", { force: true });
   const encoded = relative.split("/").map(encodeURIComponent).join("/");
   let lastError;
-  for (const location of bases()) {
+  // Prefer the project's own image hosts for every collection. Portraits
+  // retain their licensed origin as a fallback until our site is redeployed.
+  const isPortrait = relative.startsWith("img/portrait/original/");
+  for (const location of (isPortrait && !process.env.AI_REFERENCE_ASSET_BASE
+    ? [...bases(), "https://ai-portrait-gallery.pages.dev/"] : bases())) {
     const baseURL = new URL(location);
     if (baseURL.protocol !== "https:" && !(baseURL.protocol === "http:" &&
       ["localhost", "127.0.0.1"].includes(baseURL.hostname))) {
       throw new Error("AI_REFERENCE_ASSET_BASE must be HTTPS or a loopback test server");
     }
-    const url = new URL(encoded, baseURL);
+    const isPortraitOrigin = isPortrait &&
+      baseURL.hostname === "ai-portrait-gallery.pages.dev";
+    const url = new URL(isPortraitOrigin
+      ? `img/full/${path.posix.basename(relative)}` : encoded, baseURL);
     for (let attempt = 0; attempt < 2; attempt++) {
       const temporary = `${target}.${process.pid}.${attempt}.part`;
       try {
@@ -137,9 +144,10 @@ async function download(relative) {
 
 async function prepareAssets(pairs) {
   const names = new Set();
-  for (const { pose, outfit } of pairs) {
+  for (const { pose, outfit, person } of pairs) {
     if (pose) names.add(pose.original);
     if (outfit) names.add(outfit.original);
+    if (person?.original) names.add(person.original);
   }
   const files = {};
   // Keep concurrency modest to avoid saturating public GitHub or Windows I/O.

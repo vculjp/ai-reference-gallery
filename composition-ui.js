@@ -1,11 +1,12 @@
 "use strict";
 // Composition UI controller. Canvas rendering and file access stay in composition.js.
-window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choosePose, chooseCostume, openComposition}) => {
+window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choosePose, chooseCostume, choosePortrait, openComposition}) => {
   let previewVersion = 0;
   let previewOpener = null;
+  let gridPersonInitialized = false;
   let poseGroupsSource = null;
   let poseGroups = [];
-  let filters = { outfit: "", pose: "", duo: false };
+  let filters = { outfit: "", pose: "", duo: false, portraitSection: "face", portraitHair: "" };
   const imageTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
   const maxUploadBytes = 50 * 1024 * 1024;
   const validImageFile = (file) => file && imageTypes.has(file.type) &&
@@ -40,9 +41,15 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
   function eligibleOutfits() {
     return state.costumeImages.filter((item) => !filters.outfit || item.category === filters.outfit);
   }
+  function eligiblePortraits() {
+    return state.portraitImages.filter((item) =>
+      (!filters.portraitSection || item.section === filters.portraitSection) &&
+      (!filters.portraitHair || item.category === filters.portraitHair));
+  }
   function updatePoolCount() {
     $("compose-random-pool-size").textContent =
-      t("composeRandomRange", eligiblePoseGroups().length, eligibleOutfits().length);
+      t("composeRandomRange", eligiblePoseGroups().length, eligibleOutfits().length,
+        eligiblePortraits().length);
   }
   function refreshRandomFilters() {
     const outfits = [...new Set(state.costumeImages.map((item) => item.category))];
@@ -66,6 +73,20 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
       ...[...categories].sort((a, b) => a[1].localeCompare(b[1]))
         .map(([category, name]) => new Option(name, category)));
     poseSelect.value = filters.pose;
+    const sectionSelect = $("compose-random-portrait-section");
+    sectionSelect.replaceChildren(
+      new Option(t("composeAllPortraitSections"), ""),
+      new Option(t("portraitFace"), "face"),
+      new Option(t("portraitStyling"), "styling")
+    );
+    sectionSelect.value = filters.portraitSection;
+    const hairSelect = $("compose-random-portrait-hair");
+    hairSelect.replaceChildren(new Option(t("composeAllPortraitHair"), ""),
+      ...["short", "medium", "semi-long", "long"].map((category) => {
+        const item = state.portraitImages.find((x) => x.category === category);
+        return new Option(item ? label(item, "category") : category, category);
+      }));
+    hairSelect.value = filters.portraitHair;
     $("compose-random-include-duo").checked = filters.duo;
     updatePoolCount();
   }
@@ -123,9 +144,34 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     }
     $("compose-grid-settings-title").textContent =
       t("composeGridSettings", state.composition.mode === "nine" ? 9 : 4);
+    updateGridPersonLabel();
+    updateGridPrompt();
     if (!$("compose-preview-overlay").hidden && isGrid()) void renderPreview();
   }
-  function shuffleGrid() {
+  function updateGridPersonLabel() {
+    const hasPerson = !!state.composition.person;
+    $("compose-grid-use-person").disabled = !hasPerson;
+    $("compose-grid-use-person").checked = hasPerson && state.composition.gridUsePerson;
+    $("compose-grid-person-current").textContent = hasPerson
+      ? t("composeGridCurrentPerson", state.composition.person.id) : t("composeGridNoPerson");
+    const preview = $("compose-grid-person-preview");
+    preview.hidden = !hasPerson;
+    if (hasPerson) {
+      const img = element("img");
+      img.alt = state.composition.person.id;
+      img.src = state.composition.person.uploadUrl ||
+        state.composition.person.thumbnail || state.composition.person.preview ||
+        state.composition.person.original;
+      preview.replaceChildren(img);
+    } else preview.replaceChildren();
+  }
+  function shuffleGrid(randomizePerson = false) {
+    // A user-uploaded portrait is deliberately fixed across full grid shuffles.
+    // The separate "Random face" button can still explicitly replace it.
+    if (randomizePerson && state.composition.gridUsePerson &&
+        !state.composition.person?.uploadUrl && drawRandomPerson()) {
+      updateComposition(["person"]);
+    }
     const count = gridCount();
     const {poses, outfits} = gridPool();
     if (poses.length < count || outfits.length < count) {
@@ -180,6 +226,12 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     $("compose-grid-panel").hidden = !isGrid();
     document.querySelector(".compose-random-bar").hidden = isGrid();
     if (isGrid()) {
+      if (!gridPersonInitialized) {
+        if (!state.composition.person) drawRandomPerson();
+        state.composition.gridUsePerson = !!state.composition.person;
+        gridPersonInitialized = true;
+        updateComposition(["person"]);
+      }
       const {poses, outfits} = gridPool();
       const allowedPoses = new Set(poses.map((group) => group[0].pose_key));
       const allowedOutfits = new Set(outfits.map((item) => item.id));
@@ -202,6 +254,8 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
       "compose-random-pose": "composeRandomPose", "compose-random-costume": "composeRandomCostume",
       "compose-random-outfit-filter-label": "composeOutfitFilter",
       "compose-random-pose-filter-label": "composePoseFilter",
+      "compose-random-portrait-section-label": "composePortraitSection",
+      "compose-random-portrait-hair-label": "composePortraitHair",
       "compose-random-duo-label": "composeIncludeDuo",
       "compose-prompt-title": "composePromptTitle", "compose-prompt-help": "composePromptHelp",
       "compose-copy-prompt": "composeCopyPrompt", "compose-copy-image": "composeCopyImage",
@@ -209,6 +263,8 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
       "compose-person-label": "composePerson", "compose-person-empty": "composePersonEmpty",
       "compose-person-help": "composePersonHelp",
       "compose-upload-person": "composeUploadPerson", "compose-remove-person": "composeRemovePerson",
+      "compose-choose-person": "composeChoosePortrait",
+      "compose-random-person": "composeRandomPerson",
       "compose-choose-pose": "choosePose", "compose-choose-costume": "chooseCostume",
       "compose-upload": "uploadImage", "compose-preview-eyebrow": "composeEditorEyebrow",
       "compose-preview-title": "composeEditorTitle", "compose-open-preview": "composeOpenPreview",
@@ -225,9 +281,17 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
       "compose-mode-four": "composeModeFour", "compose-mode-nine": "composeModeNine",
       "compose-grid-heading": "composeGridHeading", "compose-grid-hint": "composeGridHint",
       "compose-grid-shuffle": "composeGridShuffle",
+      "compose-grid-face-title": "composeGridFaceTitle",
+      "compose-grid-person-label": "composeGridPerson",
+      "compose-grid-choose-person": "composeGridChoosePerson",
+      "compose-grid-random-person": "composeRandomPerson",
+      "compose-grid-upload-person": "composeGridUploadPerson",
       "compose-grid-bg-label": "composeBg", "compose-grid-white": "composeWhite",
       "compose-grid-soft": "composeSoft", "compose-grid-labels-label": "composeLabels",
       "compose-grid-export-hint": "composeGridExportHint",
+      "compose-grid-prompt-title": "composeGridPromptTitle",
+      "compose-grid-prompt-help": "composeGridPromptHelp",
+      "compose-grid-copy-prompt": "composeCopyPrompt",
       "compose-grid-preview": "composeOpenPreview",
       "compose-grid-copy": "composeGridCopy", "compose-grid-download": "composeDownload"
     };
@@ -254,11 +318,21 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     state.composition.second = item;
     return true;
   }
+  function drawRandomPerson() {
+    const item = pickDifferent(eligiblePortraits(), state.composition.person?.id,
+      (portrait) => portrait.id);
+    if (!item) return false;
+    releaseUploadedPerson();
+    state.composition.person = item;
+    return true;
+  }
   function randomize(which) {
-    const poseChanged = which !== "costume" && drawRandomPose();
-    const costumeChanged = which !== "pose" && drawRandomCostume();
-    if (poseChanged || costumeChanged) updateComposition([
-      ...(poseChanged ? ["pose"] : []), ...(costumeChanged ? ["costume"] : [])
+    const poseChanged = (which === "both" || which === "pose") && drawRandomPose();
+    const costumeChanged = (which === "both" || which === "costume") && drawRandomCostume();
+    const personChanged = (which === "both" || which === "person") && drawRandomPerson();
+    if (poseChanged || costumeChanged || personChanged) updateComposition([
+      ...(poseChanged ? ["pose"] : []), ...(costumeChanged ? ["costume"] : []),
+      ...(personChanged ? ["person"] : [])
     ]);
   }
 
@@ -272,13 +346,15 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     if (isGrid()) return {
       mode: state.composition.mode,
       items: state.composition.gridItems.map(({pose, outfit}) => ({pose, outfit})),
+      person: state.composition.gridUsePerson ? state.composition.person : null,
       background: state.composition.gridBackground,
       labels: state.composition.gridLabels
     };
     return { ...state.composition, mode: "reference" };
   }
   const activeEntries = () => isGrid()
-    ? state.composition.gridItems.flatMap(({pose, outfit}) => [pose, outfit])
+    ? [...state.composition.gridItems.flatMap(({pose, outfit}) => [pose, outfit]),
+      ...(state.composition.gridUsePerson && state.composition.person ? [state.composition.person] : [])]
     : [state.composition.pose, state.composition.second, state.composition.person].filter(Boolean);
   const hasCompleteSelection = () => isGrid()
     ? state.composition.gridItems.length === gridCount()
@@ -299,7 +375,8 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
   }
   function setComposeStatus(key) {
     setStatus("compose-status", key,
-      ["composeExportError", "composeOnlineImageError", "composeMissingFile"].includes(key));
+      ["composeExportError", "composeOnlineImageError", "composeMissingFile",
+        "composeInvalidUpload"].includes(key));
   }
   function syncComposeFolderNotice() {
     $("compose-local-notice").hidden = location.protocol !== "file:" || !composition.needsFolder();
@@ -317,6 +394,30 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     }
     $("compose-prompt-text").value = t("composePrompt", pose.id,
       t("composePosLeft"), second.id, t("composePosRight"));
+  }
+  function updateGridPrompt() {
+    const complete = isGrid() && hasCompleteSelection();
+    $("compose-grid-copy-prompt").disabled = !complete;
+    $("compose-grid-prompt-status").textContent = "";
+    if (!complete) {
+      $("compose-grid-prompt-text").value = t("composeGridPromptEmpty");
+      return;
+    }
+    const count = gridCount();
+    const columns = count === 9 ? 3 : 2;
+    const {person, gridUsePerson, gridItems} = state.composition;
+    const shared = gridUsePerson && person
+      ? person.uploadUrl ? t("composeGridPromptPersonUpload") :
+        t("composeGridPromptPersonCatalog", person.id)
+      : t("composeGridPromptNoPerson");
+    const pairLines = gridItems.map(({pose, outfit}, index) =>
+      t("composeGridPromptPair", index + 1, Math.floor(index / columns) + 1,
+        index % columns + 1, pose.id, label(pose, "pose_name") || label(pose, "category"),
+        outfit.id, label(outfit, "category")));
+    $("compose-grid-prompt-text").value = [
+      t("composeGridPromptIntro", count, columns), shared, ...pairLines,
+      t("composeGridPromptFinish")
+    ].join("\n\n");
   }
   function setCopyStatus(key, error = false) {
     setStatus("compose-copy-status", key, error);
@@ -381,17 +482,20 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     $("compose-preview-close").focus();
     void renderPreview();
   }
-  async function copyPrompt() {
-    const value = $("compose-prompt-text").value;
+  async function copyPrompt(grid = false) {
+    if (grid && !hasCompleteSelection()) return;
+    const textarea = $(grid ? "compose-grid-prompt-text" : "compose-prompt-text");
     try {
       if (!navigator.clipboard?.writeText) throw new Error("CLIPBOARD_UNAVAILABLE");
-      await navigator.clipboard.writeText(value);
+      await navigator.clipboard.writeText(textarea.value);
       setCopyStatus("composeCopiedPrompt");
+      if (grid) $("compose-grid-prompt-status").textContent = t("composeCopiedPrompt");
     } catch (_) {
-      $("compose-prompt-box").open = true;
-      $("compose-prompt-text").focus();
-      $("compose-prompt-text").select();
+      $(grid ? "compose-grid-prompt-box" : "compose-prompt-box").open = true;
+      textarea.focus();
+      textarea.select();
       setCopyStatus("composeCopyError", true);
+      if (grid) $("compose-grid-prompt-status").textContent = t("composeCopyError");
     }
   }
   async function copyMergedImage() {
@@ -447,9 +551,11 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     if (options.person) {
       const img = element("img");
       img.alt = options.person.id;
-      img.src = options.person.uploadUrl;
+      img.src = options.person.uploadUrl || options.person.thumbnail || options.person.preview || options.person.original;
       personPreview.prepend(img);
     }
+    updateGridPersonLabel();
+    updateGridPrompt();
     const complete = !!options.pose && !!options.second;
     $("compose-open-preview").disabled = !complete;
     $("compose-download").disabled = !complete;
@@ -527,7 +633,7 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     if (state.type === "compose") updateComposition();
     else openComposition();
   }
-  async function uploadPersonImage(file) {
+  async function uploadPersonImage(file, target = "reference") {
     if (!file) return;
     if (!validImageFile(file)) {
       setComposeStatus("composeInvalidUpload");
@@ -541,6 +647,7 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
       await image.decode();
       releaseUploadedPerson();
       state.composition.person = { id: file.name, uploadUrl: url };
+      state.composition.gridUsePerson = target === "grid";
       setComposeStatus("");
       updateComposition();
     } catch (_) {
@@ -551,13 +658,44 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
   function removePersonImage() {
     releaseUploadedPerson();
     state.composition.person = null;
+    state.composition.gridUsePerson = false;
     updateComposition();
   }
+  function setPersonFromCatalog(item, target = "reference") {
+    releaseUploadedPerson();
+    state.composition.person = item;
+    state.composition.gridUsePerson = target === "grid";
+    updateComposition();
+  }
+  function randomizeGridPerson() {
+    if (!drawRandomPerson()) {
+      setGridStatus("composeNoPortraits");
+      return;
+    }
+    state.composition.gridUsePerson = true;
+    updateComposition(["person"]);
+  }
   function bind() {
+    $("compose-choose-person").onclick = () => choosePortrait("reference");
+    $("compose-random-person").onclick = () => randomize("person");
+    $("compose-grid-choose-person").onclick = () => choosePortrait("grid");
+    $("compose-grid-random-person").onclick = randomizeGridPerson;
+    $("compose-grid-upload-person").onclick = () => $("compose-grid-person-input").click();
+    $("compose-grid-person-input").onchange = (event) => {
+      void uploadPersonImage(event.target.files[0], "grid");
+      // Allow the same file to be chosen again after replacing the portrait.
+      event.target.value = "";
+    };
+    $("compose-grid-use-person").onchange = (event) => {
+      state.composition.gridUsePerson = event.target.checked && !!state.composition.person;
+      updateGridPersonLabel();
+      updateGridPrompt();
+      if (!$("compose-preview-overlay").hidden) void renderPreview();
+    };
     for (const mode of ["reference", "four", "nine"]) {
       $("compose-mode-" + mode).onclick = () => setMode(mode);
     }
-    $("compose-grid-shuffle").onclick = shuffleGrid;
+    $("compose-grid-shuffle").onclick = () => shuffleGrid(true);
     $("compose-grid-bg").onchange = (event) => {
       state.composition.gridBackground = event.target.value;
       if (!$("compose-preview-overlay").hidden) void renderPreview();
@@ -604,6 +742,14 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
     $("compose-random-pose").onclick = () => randomize("pose");
     $("compose-random-costume").onclick = () => randomize("costume");
     $("compose-random-pair").onclick = () => randomize("both");
+    $("compose-random-portrait-section").onchange = (event) => {
+      filters.portraitSection = event.target.value;
+      updatePoolCount();
+    };
+    $("compose-random-portrait-hair").onchange = (event) => {
+      filters.portraitHair = event.target.value;
+      updatePoolCount();
+    };
     $("compose-random-outfit-filter").onchange = (event) => {
       filters.outfit = event.target.value;
       updatePoolCount();
@@ -619,7 +765,8 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
       refreshRandomFilters();
       if (isGrid()) shuffleGrid();
     };
-    $("compose-copy-prompt").onclick = copyPrompt;
+    $("compose-copy-prompt").onclick = () => copyPrompt();
+    $("compose-grid-copy-prompt").onclick = () => copyPrompt(true);
     $("compose-copy-image").onclick = copyMergedImage;
     $("compose-upload").onclick = () => $("compose-upload-input").click();
     $("compose-upload-input").onchange = (event) => { uploadSecondImage(event.target.files[0]); event.target.value = ""; };
@@ -648,5 +795,6 @@ window.ReferenceCompositionUI = ({state, composition, t, label, $, element, choo
   }
 
   return { bind, updateComposition, closePreview, refreshLabels, releaseUploadedImage, uploadSecondImage,
+    setPersonFromCatalog,
     uploadPersonImage, removePersonImage };
 };

@@ -9,6 +9,7 @@ const vm = require("node:vm");
 const zlib = require("node:zlib");
 const { render } = require("./render.cjs");
 const { prepareAssets } = require("./asset-store.cjs");
+const catalogAPI = require("./catalog-api.cjs");
 const { interpret, rank, selectionInfo } = require("./smart-select.cjs");
 const { diagnostics } = require("./doctor.cjs");
 
@@ -28,20 +29,20 @@ function read(name) {
 function catalogs(language = "zh-CN") {
   if (!locales.includes(language)) throw new Error("--lang must be zh-CN, en or ja");
   const scope = { window: {}, localStorage: { getItem: () => null, setItem: () => {} } };
-  for (const file of ["catalog.js", "costume-catalog.js", "i18n.js"]) {
-    vm.runInNewContext(read(file), scope, { filename: file, timeout: 2000 });
-  }
+  vm.runInNewContext(read("i18n.js"), scope, { filename: "i18n.js", timeout: 2000 });
+  const manifest = catalogAPI.loadManifest();
   const i18n = scope.window.ReferenceGalleryI18n;
   i18n.setLocale(language);
-  return { poses: scope.window.POSE_GALLERY_CATALOG,
-    outfits: scope.window.COSTUME_GALLERY_CATALOG, i18n };
+  return { poses: manifest.collections.pose, outfits: manifest.collections.outfit,
+    portraits: manifest.collections.portrait,
+    i18n, manifest };
 }
 
 const normalize = (value) => String(value || "").normalize("NFKC").toLowerCase().trim();
 function matches(item, query, i18n) {
   const words = normalize(query).split(/\s+/).filter(Boolean);
   if (!words.length) return true;
-  const fields = [item.id, item.pose_key, item.pose_number,
+  const fields = [item.id, item.pose_key, item.pose_number, item.style, item.section,
     ...i18n.searchable(item)].map(normalize).join(" ");
   return words.every((word) => fields.includes(word));
 }
@@ -52,23 +53,25 @@ function hasCategory(item, name, i18n) {
 }
 const isDuo = (pose) => pose.series === "2人絡み";
 function findAssets(data, type, { query = "", category = "", includeDuo = false } = {}) {
-  if (!["pose", "outfit"].includes(type)) throw new Error("--type must be pose or outfit");
-  return (type === "pose" ? data.poses : data.outfits).filter((item) =>
+  if (!["pose", "outfit", "portrait"].includes(type)) throw new Error("--type must be pose, outfit or portrait");
+  return (type === "pose" ? data.poses : type === "portrait" ? data.portraits : data.outfits).filter((item) =>
     (type !== "pose" || includeDuo || !isDuo(item)) &&
     hasCategory(item, category, data.i18n) && matches(item, query, data.i18n));
 }
 
 function parseArgs(args) {
   const [command, ...rest] = args;
-  if (!["search", "categories", "compose", "grid", "doctor", "help", "--help"].includes(command)) {
-    throw new Error("Expected search, categories, compose, grid or doctor. Run 'help' for examples.");
+  if (!["search", "categories", "catalog", "compose", "grid", "doctor", "help", "--help"].includes(command)) {
+    throw new Error("Expected search, categories, catalog, compose, grid or doctor. Run 'help' for examples.");
   }
   const flags = {};
   const booleans = new Set(["include-duo", "overwrite"]);
   const known = new Set(["type", "query", "category", "limit", "lang", "pose-id",
     "outfit-id", "pose-query", "outfit-query", "pose-category", "outfit-category",
+    "portrait-id", "portrait-query", "portrait-hair", "portrait-section",
     "person", "outfit-image", "count", "seed", "out", "out-dir", "background",
-    "labels", "size", "describe", "grid-mode", "grid-source", "aspect", ...booleans]);
+    "labels", "size", "describe", "grid-mode", "grid-source", "aspect",
+    "id", "offset", "format", ...booleans]);
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
     if (!arg.startsWith("--") || !known.has(arg.slice(2))) throw new Error(`Unknown argument: ${arg}`);
@@ -161,7 +164,8 @@ function selectCompositions(data, options) {
 function selectSingles(data, options, count) {
   const type = options["grid-source"] || "pose";
   if (!["pose", "outfit"].includes(type)) throw new Error("--grid-source must be pose or outfit");
-  if (options.person || options["outfit-image"]) {
+  if (options.person || options["outfit-image"] ||
+      ["portrait-id", "portrait-query", "portrait-hair", "portrait-section"].some((key) => options[key])) {
     throw new Error("Single-image grids do not accept --person or --outfit-image; use --grid-mode pairs");
   }
   const intent = options.describe ? interpret(options.describe) : null;
@@ -199,6 +203,27 @@ function localImage(filename, label) {
   return { filename: resolved, name: path.basename(resolved) };
 }
 
+function selectPortrait(data, flags) {
+  if (flags.person && (flags["portrait-id"] || flags["portrait-query"] ||
+      flags["portrait-hair"] || flags["portrait-section"])) {
+    throw new Error("Use either --person FILE or portrait catalog selection, not both");
+  }
+  if (!["portrait-id", "portrait-query", "portrait-hair", "portrait-section"].some((key) => flags[key])) {
+    return null;
+  }
+  if (flags["portrait-section"] && !["face", "styling"].includes(flags["portrait-section"])) {
+    throw new Error("--portrait-section must be face or styling");
+  }
+  let matches = findAssets(data, "portrait", {
+    query: flags["portrait-query"] || "",
+    category: flags["portrait-hair"] || ""
+  }).filter((item) => (!flags["portrait-id"] || item.id === flags["portrait-id"]) &&
+    (!flags["portrait-section"] || item.section === flags["portrait-section"]));
+  if (!matches.length) throw new Error("No matching portrait. Check --portrait-id, --portrait-hair and --portrait-section.");
+  matches = shuffled(matches, randomFromSeed(flags.seed));
+  return matches[0];
+}
+
 function promptFor(data, pose, outfit, person) {
   const { t } = data.i18n;
   const second = outfit ? outfit.id : "UPLOAD";
@@ -226,7 +251,8 @@ function gridPrompt(data, pairs, person) {
 function compositionInputs(pair, person, outfitFile, flags) {
   return { pose: pair.pose, second: pair.outfit ||
     { id: outfitFile.name, uploadUrl: "/__upload/outfit" },
-  person: person ? { id: person.name, uploadUrl: "/__upload/person" } : null,
+  person: person ? (person.original ? person :
+    { id: person.name, uploadUrl: "/__upload/person" }) : null,
   background: flags.background || "white", labels: flags.labels !== "false" };
 }
 
@@ -236,7 +262,8 @@ function compositionMeta(data, pair, person, outfitFile) {
     name: data.i18n.label(pose, "pose_name"), angle: data.i18n.label(pose, "angle") },
   outfit: outfit ? { id: outfit.id, category: data.i18n.label(outfit, "category") }
     : { uploaded: outfitFile.name },
-  person: person ? { uploaded: person.name } : null };
+  person: person ? (person.original ? { id: person.id, section: person.section,
+    hair: data.i18n.label(person, "category") } : { uploaded: person.name }) : null };
 }
 
 function validateCompositionFlags(flags) {
@@ -271,12 +298,12 @@ async function compose(data, flags) {
   if (occupied.length && !flags.overwrite) {
     throw new Error(`Output already exists: ${occupied[0]}. Use --overwrite or choose another path.`);
   }
-  const person = localImage(flags.person, "Person photo");
+  const person = localImage(flags.person, "Person photo") || selectPortrait(data, flags);
   const outfitFile = localImage(flags["outfit-image"], "Outfit image");
-  const uploads = { ...(person ? { person: person.filename } : {}),
+  const uploads = { ...(person?.filename ? { person: person.filename } : {}),
     ...(outfitFile ? { outfit: outfitFile.filename } : {}) };
   const records = [];
-  const assets = await prepareAssets(pairs);
+  const assets = await prepareAssets(pairs.map((pair) => ({...pair, person})));
   await render(read("composition.js"), uploads, async (draw) => {
     for (let i = 0; i < pairs.length; i++) {
       const { pose, outfit } = pairs[i];
@@ -339,9 +366,9 @@ async function grid(data, flags) {
   if (occupied && !flags.overwrite) {
     throw new Error(`Output already exists: ${occupied}. Use --overwrite or choose another path.`);
   }
-  const person = localImage(flags.person, "Person photo");
+  const person = localImage(flags.person, "Person photo") || selectPortrait(data, flags);
   const outfitFile = localImage(flags["outfit-image"], "Outfit image");
-  const uploads = { ...(person ? { person: person.filename } : {}),
+  const uploads = { ...(person?.filename ? { person: person.filename } : {}),
     ...(outfitFile ? { outfit: outfitFile.filename } : {}) };
   const entries = pairs.map((pair) => compositionInputs(pair, person, outfitFile, flags));
   const panels = pairs.map((pair, index) => ({
@@ -350,7 +377,7 @@ async function grid(data, flags) {
     ...compositionMeta(data, pair, person, outfitFile)
   }));
   const prompt = gridPrompt(data, pairs, person);
-  const assets = await prepareAssets(pairs);
+  const assets = await prepareAssets(pairs.map((pair) => ({...pair, person})));
   const rendered = await render(read("composition.js"), uploads, async (_draw, drawGrid) =>
     drawGrid(entries), assets);
   const png = Buffer.from(rendered.base64, "base64");
@@ -411,11 +438,14 @@ async function gridSingles(data, flags, count) {
 }
 
 const help = `AI Reference Gallery Skill (Node.js 22+)
-  search --type pose|outfit [--query words] [--category name] [--limit 10] [--lang zh-CN|en|ja] [--include-duo]
-  categories --type pose|outfit [--lang zh-CN|en|ja] [--include-duo]
+  catalog [--type pose|outfit|portrait] [--id ID] [--query TEXT] [--category NAME] [--offset 0] [--limit 20]
+          [--format list|manifest]   Stable Catalog v1 JSON interface
+  search --type pose|outfit|portrait [--query words] [--category name] [--limit 10] [--lang zh-CN|en|ja] [--include-duo]
+  categories --type pose|outfit|portrait [--lang zh-CN|en|ja] [--include-duo]
   compose [--pose-id ID | --pose-query words] [--outfit-id ID | --outfit-query words | --outfit-image FILE]
           [--pose-category NAME] [--outfit-category NAME] [--include-duo]
-          [--person FILE] [--count 1..20] [--seed STRING] [--background white|soft]
+          [--person FILE | --portrait-id ID | --portrait-hair NAME] [--portrait-section face|styling] [--portrait-query TEXT]
+          [--count 1..20] [--seed STRING] [--background white|soft]
           [--labels true|false] [--lang zh-CN|en|ja] [--out FILE.png | --out-dir DIR] [--overwrite]
   grid --size 4|9 [the same pose, outfit, person, filters, seed, background, labels and output flags as compose]
   grid --size 4|9 --grid-mode single --grid-source pose|outfit [--aspect square|portrait]
@@ -437,6 +467,20 @@ async function main(argv) {
     if (!report.ok) process.exitCode = 1;
     return;
   }
+  if (command === "catalog") {
+    const manifest = catalogAPI.loadManifest();
+    if (flags.format === "manifest") {
+      if (flags.id || flags.query || flags.category || flags.offset || flags.limit || flags.type) {
+        throw new Error("--format manifest does not accept filters");
+      }
+      return console.log(JSON.stringify(manifest));
+    }
+    if (flags.format && flags.format !== "list") throw new Error("--format must be list or manifest");
+    const offset = number(flags.offset, 0, 0, 100000, "offset");
+    const limit = number(flags.limit, 20, 1, 1000, "limit");
+    return console.log(JSON.stringify(catalogAPI.query(manifest, { type: flags.type || "pose",
+      id: flags.id, q: flags.query, category: flags.category, offset, limit }), null, 2));
+  }
   const data = catalogs(flags.lang || "zh-CN");
   if (command === "search") {
     const type = flags.type || "pose";
@@ -446,7 +490,8 @@ async function main(argv) {
     }
     const candidates = findAssets(data, type, {
       query: flags.query, category: flags.category, includeDuo: !!flags["include-duo"] });
-    const results = intent ? rank(candidates, type, intent, randomFromSeed(flags.seed)) : candidates;
+    const results = intent && type !== "portrait" ?
+      rank(candidates, type, intent, randomFromSeed(flags.seed)) : candidates;
     const limit = number(flags.limit, 10, 1, 100, "limit");
     const items = results.slice(0, limit).map((item) => ({
       id: item.id, category: data.i18n.label(item, "category"),

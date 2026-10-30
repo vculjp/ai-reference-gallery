@@ -1,6 +1,12 @@
 # Local Skill usage
 
-The entry point is `scripts/gallery.cjs` **relative to the installed Skill directory**. Use an absolute path to call it from any working directory, e.g. `node "$env:USERPROFILE\.codex\skills\ai-reference-gallery\scripts\gallery.cjs" help` on Windows PowerShell. No clone, `catalog.js`, `composition.js`, `img/` directory, or `git` command is required for an installed Skill. `data/runtime.json.gz` contains the compressed indexes and Canvas implementation.
+## Face references (new)
+
+Catalog v1 includes `portrait` in addition to `pose` and `outfit` (1,499 faces/styling references). Query with `catalog --type portrait`, `search --type portrait --category short` or `categories --type portrait`.
+
+In `compose` or paired `grid`, use `--portrait-id f71f980dde3` for one specific face, or filter using `--portrait-hair short|medium|semi-long|long`, `--portrait-section face|styling`, `--portrait-query TEXT`. A seeded random matching face is used across all output panels. `--person FILE` and portrait catalog selection are mutually exclusive. Selected originals come from the licensed AI Portrait Gallery by あぎ and are cached on demand. This does not generate or replace human faces automatically.
+
+The entry point is `scripts/gallery.cjs` **relative to the installed Skill directory**. Use an absolute path to call it from any working directory, e.g. `node "$env:USERPROFILE\.codex\skills\ai-reference-gallery\scripts\gallery.cjs" help` on Windows PowerShell. No clone, `catalog.js`, `composition.js`, `img/` directory, or `git` command is required for an installed Skill. `data/catalog-v1.json.gz` stores the versioned metadata; `data/runtime.json.gz` stores Canvas and i18n code.
 
 ## Installation
 
@@ -15,6 +21,8 @@ Reload Codex to discover the Skill. For an existing installation, reinstall or u
 The source catalog is included in the Skill (~87 KB compressed). On first export the downloader retrieves **only the selected originals** over HTTPS from `gallery.zsj.pp.ua` or, as fallback, `raw.githubusercontent.com/vculjp/ai-reference-gallery`; it caches them under `~/.cache/ai-reference-gallery/img/`. Later requests reuse cached files. Downloads are never uploaded to an AI service. You may configure `AI_REFERENCE_ASSET_BASE` to a trusted HTTPS mirror and `AI_REFERENCE_CACHE_DIR` to control cache storage. On Windows, the script uses `curl.exe` when available.
 
 ## Search
+
+- `catalog --type pose|outfit --id ID --category NAME --query WORDS --offset 0 --limit 20` is the public, stable Catalog v1 JSON interface. `catalog --format manifest` exports all records as one JSON document without downloading photos. See [Catalog v1 documentation](https://github.com/vculjp/ai-reference-gallery/blob/main/docs/catalog-api.md) for the versioned data contract.
 
 - `search --type pose|outfit --query "words" --category "value" --limit 10`
 - `categories --type pose|outfit`

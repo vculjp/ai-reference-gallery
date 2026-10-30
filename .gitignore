@@ -1,12 +1,14 @@
 # All pose and costume images live under img/ and are intentionally versioned.
 # Source snapshots and private/local content are not part of the website.
-/metadata/
+/metadata/*
+!/metadata/catalog-v1.json.gz
 /private/
 /catalog.local.json
 
 # Generated artifacts and runtime files.
 /dist/
 /output/
+/.release/
 /.wrangler/
 __pycache__/
 *.py[cod]
@@ -30,3 +32,4 @@ venv/
 *.zip
 *.tar
 *.tar.gz
+*.tgz

@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Catalog, Skill and npm package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout source and manifests without 2GB of images
+        uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            .agents/
+            bin/
+            scripts/
+            metadata/
+            README.md
+            ASSETS.md
+            LICENSE
+            package.json
+            catalog.js
+            costume-catalog.js
+            composition.js
+            composition-ui.js
+            composition.css
+            app.js
+            i18n.js
+            index.html
+            style.css
+            test_i18n.cjs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify source indexes, manifest and bundled runtime are in sync
+        run: npm run check:catalog
+      - name: Distribution and Catalog API tests
+        run: npm test
+      - name: Skill logic tests (no image downloads)
+        run: node --test --test-name-pattern="catalog lookup|random composition|natural-language selection|single-image grid rejects|search CLI|four- and nine-panel prompts|grid CLI rejects" scripts/test-skill.cjs
+      - name: Website JavaScript syntax
+        run: |
+          node --check app.js
+          node --check composition.js
+          node --check composition-ui.js
+          node --check i18n.js
+      - name: Confirm installable package does not contain original photos
+        run: npm pack --dry-run --ignore-scripts

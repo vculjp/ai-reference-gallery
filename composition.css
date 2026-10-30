@@ -12,12 +12,20 @@ body:has(#compose-panel:not([hidden])) .collection-heading h2 { font-size: 25px;
 .compose-grid-panel { display:grid; gap:14px; min-width:0; padding:18px; border:1px solid var(--line); border-radius:19px; background:#fff; }
 .compose-grid-controls { display:flex; align-items:end; flex-wrap:wrap; gap:14px; }
 .compose-grid-intro { flex:1 1 270px; }
-.compose-grid-intro h3,.compose-grid-sidebar h3 { font-size:16px; margin:0 0 6px; }
+.compose-grid-intro h3,.compose-grid-sidebar h3,.compose-grid-face-card h3 { font-size:16px; margin:0 0 6px; }
 .compose-grid-intro p,.compose-grid-export-hint { font-size:12px; line-height:1.7; color:var(--secondary); margin:0; }
 .compose-grid-options>label:not(.compose-checkbox) { display:grid; gap:6px; color:var(--secondary); font-size:12px; font-weight:600; }
-.compose-grid-options select { height:41px; min-width:130px; }
-.compose-grid-body { display:grid; grid-template-columns:minmax(0,1fr) minmax(235px,275px); align-items:start; gap:22px; }
-.compose-grid-tiles { display:grid; grid-template-columns:repeat(var(--grid-count,2),minmax(0,1fr)); gap:7px; padding:10px; border:1px solid #e3e7ee; border-radius:15px; background:#f5f6f9; max-width:710px; }
+.compose-grid-options select { height:41px; width:100%; }
+/* Three purposeful columns: reference pairs | shared face | export settings. */
+.compose-grid-body { display:grid; grid-template-columns:minmax(0,2.45fr) minmax(0,1fr) minmax(0,1fr); align-items:stretch; gap:12px; }
+.compose-grid-gallery {
+  display:flex; flex-direction:column; min-width:0; height:100%;
+  padding:10px; border:1px solid #e3e7ee; border-radius:15px; background:#f5f6f9;
+}
+.compose-grid-tiles {
+  display:grid; grid-template-columns:repeat(var(--grid-count,2),minmax(0,1fr));
+  gap:7px; width:100%; min-width:0;
+}
 .compose-grid-tile { display:flex; position:relative; align-items:stretch; justify-content:center; gap:4px; padding:6px; aspect-ratio:1; min-width:0; overflow:hidden; border:1px solid #dce2eb; border-radius:9px; background:#fff; cursor:pointer; }
 .compose-grid-tile:hover { border-color:var(--accent); box-shadow:0 0 0 2px #0071e318; }
 .compose-grid-tile:focus-visible { outline:3px solid var(--accent); outline-offset:2px; }
@@ -27,11 +35,49 @@ body:has(#compose-panel:not([hidden])) .collection-heading h2 { font-size: 25px;
 .compose-grid-tile-refresh { position:absolute; top:6px; right:6px; display:grid; place-items:center; width:26px; height:26px; border-radius:50%; background:#1d1d1fd9; color:white; font-size:16px; opacity:.1; }
 .compose-grid-tile:hover .compose-grid-tile-refresh,.compose-grid-tile:focus-visible .compose-grid-tile-refresh { opacity:1; }
 .compose-grid-status { min-height:18px; margin:9px 0 0; font-size:12px; color:var(--secondary); }
+.compose-grid-gallery > .compose-grid-status { margin-top:auto; padding:9px 2px 0; }
 .compose-grid-status[data-status="error"] { color:#b42318; }
-.compose-grid-sidebar { display:grid; gap:17px; padding:17px; border:1px solid var(--line); border-radius:15px; background:#fafbfd; }
-.compose-grid-options { display:flex; flex-direction:column; gap:14px; }
-.compose-grid-actions { display:grid; gap:9px; }
-.compose-grid-actions button { min-height:41px; border-radius:999px; font-size:13px; }
+.compose-grid-face-card,.compose-grid-sidebar {
+  display:flex; flex-direction:column; min-width:0; gap:12px;
+  padding:16px; border:1px solid var(--line); border-radius:15px; background:#fafbfd;
+}
+.compose-grid-options { display:flex; flex-direction:column; gap:10px; }
+.compose-grid-sidebar .compose-grid-options { flex:0 0 auto; justify-content:flex-start; min-height:0; }
+.compose-grid-sidebar .compose-checkbox { min-height:30px; }
+.compose-grid-face-content { display:flex; flex-direction:column; gap:12px; min-width:0; }
+.compose-grid-face-content .compose-checkbox { min-height:34px; }
+.compose-grid-person-preview {
+  display:flex; align-items:center; justify-content:center; padding:10px;
+  min-height:215px; border:1px solid #dce2eb; border-radius:12px;
+  background:#f4f5f8;
+}
+.compose-grid-person-preview[hidden] { display:none; }
+.compose-grid-person-preview img { display:block; width:100%; height:clamp(185px,24vw,310px); object-fit:contain; }
+.compose-grid-face-card .compose-grid-status { margin:0; min-height:0; line-height:1.5; overflow-wrap:anywhere; }
+.compose-grid-face-actions { display:grid; gap:9px; }
+.compose-grid-face-actions button { width:100%; min-height:40px; padding:9px 10px; font-size:12px; }
+.compose-grid-prompt-box {
+  min-width:0; margin:0; padding:11px 12px;
+  border-radius:11px; background:#fff;
+}
+.compose-grid-prompt-box > p { margin:8px 0; font-size:11px; line-height:1.5; }
+.compose-grid-prompt-box textarea {
+  display:block; box-sizing:border-box; width:100%; min-width:0;
+  height:125px; min-height:95px; max-height:175px; overflow:auto;
+  padding:9px; border:1px solid #e2e5ec; border-radius:8px;
+  background:#fff; color:var(--ink); font:inherit; font-size:11px; line-height:1.55;
+  resize:vertical;
+}
+.compose-grid-prompt-box .compose-prompt-actions { flex-direction:column; gap:5px; margin-top:8px; }
+.compose-grid-prompt-box .compose-prompt-actions button { padding:8px 10px; min-height:36px; width:100%; }
+.compose-grid-prompt-box .compose-top-status { overflow-wrap:anywhere; }
+.compose-grid-sidebar .compose-random-primary { width:100%; flex-shrink:0; min-height:40px; padding:9px 10px; font-size:12px; white-space:normal; }
+.compose-grid-export-hint { margin:0; }
+.compose-grid-actions {
+  display:flex; flex:0 0 auto; flex-direction:column;
+  justify-content:flex-start; gap:9px; min-height:0;
+}
+.compose-grid-actions button { width:100%; min-height:40px; padding:9px 10px; border-radius:999px; font-size:12px; }
 #compose-grid-download { border:0; background:var(--accent); color:white; font-weight:700; }
 .compose-grid-actions button:disabled { opacity:.5; cursor:not-allowed; }
 .compose-panel > [hidden],.compose-workbench[hidden],.compose-random-bar[hidden] { display:none !important; }
@@ -272,16 +318,21 @@ body:has(#compose-panel:not([hidden])) .collection-heading h2 { font-size: 25px;
 #add-to-compose { min-height: 42px; padding: 10px 17px; border: 1px solid #d5d8df;
   border-radius: 999px; color: var(--ink); background: #f5f6f8; font-weight: 650; font-size: 13px; }
 #add-to-compose:hover { background: #e9ebf0; }
+@media (max-width: 1100px) {
+  .compose-grid-body { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+  .compose-grid-gallery { grid-column:1 / -1; }
+  .compose-grid-tiles { max-width:720px; margin-inline:auto; }
+  .compose-grid-sidebar .compose-grid-options { flex:0 0 auto; justify-content:flex-start; min-height:0; }
+  .compose-grid-actions { flex:0 0 auto; min-height:0; }
+  .compose-grid-person-preview img { height:230px; }
+}
 @media (max-width: 1020px) {
-  .compose-grid-body { grid-template-columns:minmax(0,1fr) minmax(190px,230px); gap:12px; }
   .compose-workbench { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .compose-editor { grid-column: 1 / -1; grid-row: 2; }
   .compose-slot-preview { min-height: 240px; }
 }
 @media (max-width: 760px) {
-  .compose-grid-body { grid-template-columns:minmax(0,1fr); }
-  .compose-grid-sidebar { gap:10px; }
-  .compose-grid-options { flex-direction:row; flex-wrap:wrap; }
+  .compose-grid-face-card,.compose-grid-sidebar { gap:12px; }
   .compose-random-bar { padding: 12px; gap: 10px; }
   .compose-workbench { gap: 10px; }
   .compose-selection .compose-slot { gap: 6px; padding: 11px; }
@@ -293,6 +344,14 @@ body:has(#compose-panel:not([hidden])) .collection-heading h2 { font-size: 25px;
   .compose-local-notice { flex-wrap: wrap; }
 }
 @media (max-width: 480px) {
+  .compose-grid-body { grid-template-columns:minmax(0,1fr); }
+  .compose-grid-gallery { grid-column:auto; }
+  .compose-grid-gallery { padding:5px; }
+  .compose-grid-face-card,.compose-grid-sidebar { padding:13px; }
+  .compose-grid-face-actions { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .compose-grid-face-actions button { min-width:0; }
+  .compose-grid-face-actions #compose-grid-choose-person { grid-column:1 / -1; }
+  .compose-grid-person-preview img { height:230px; }
   .compose-mode-tabs { width:100%; }
   .compose-mode-tabs button { flex:1 1 0; padding:10px 6px; font-size:12px; }
   .compose-grid-panel { padding:10px; }

@@ -79,7 +79,7 @@ async function main() {
   await command("Emulation.setDeviceMetricsOverride", {
     width: 1440, height: 900, deviceScaleFactor: 1, mobile: false
   });
-  assert.match(await evalJs("document.querySelector('#counts').textContent"), /2846/);
+  assert.match(await evalJs("document.querySelector('#counts').textContent"), /4345/);
   assert.equal(await evalJs("getComputedStyle(document.body).backgroundColor"), "rgb(245, 245, 247)");
   assert.equal(await evalJs("document.querySelector('#tagline').textContent"), "灵感，从这里开始。");
   // Random drawing must work directly on an empty composition, without visiting either gallery.
@@ -96,6 +96,24 @@ async function main() {
   assert.ok(compactActions.previewBottom < compactActions.visibleHeight,
     "The preview trigger should be accessible on a 1440×900 desktop viewport");
   await evalJs("document.querySelector('#compose-random-pair').click()");
+  const firstRandom = await evalJs("(()=>{const c=state.composition;return {pose:c.pose.id,outfit:c.second.id,face:c.person.id,section:c.person.section,image:document.querySelector('#compose-person-preview img')?.src,prompt:document.querySelector('#compose-prompt-text').value};})()");
+  assert.equal(firstRandom.section,"face", "One-click random must include a real face reference");
+  assert.match(firstRandom.image,/img\/portrait\/thumb\/.*\.webp$/);
+  assert.match(firstRandom.prompt,/三图参考板/);
+  assert.equal(await evalJs("document.querySelector('#compose-person-preview img').decode().then(()=>true,()=>false)"),
+    true,"Random portrait thumbnail must actually load");
+  await evalJs("document.querySelector('#compose-random-portrait-hair').value='long';document.querySelector('#compose-random-portrait-hair').dispatchEvent(new Event('change'))");
+  await evalJs("document.querySelector('#compose-random-person').click()");
+  assert.equal(await evalJs("state.composition.person.category"),"long");
+  assert.notEqual(await evalJs("state.composition.person.id"),firstRandom.face);
+  assert.equal(await evalJs("state.composition.pose.id"),firstRandom.pose);
+  assert.equal(await evalJs("state.composition.second.id"),firstRandom.outfit);
+  await evalJs("document.querySelector('#compose-random-portrait-section').value='styling';document.querySelector('#compose-random-portrait-section').dispatchEvent(new Event('change'))");
+  await evalJs("document.querySelector('#compose-random-person').click()");
+  assert.equal(await evalJs("state.composition.person.section"),"styling");
+  assert.equal(await evalJs("state.composition.person.category"),"long");
+  await evalJs("document.querySelector('#compose-random-portrait-section').value='face';document.querySelector('#compose-random-portrait-section').dispatchEvent(new Event('change'))");
+  await evalJs("document.querySelector('#compose-random-portrait-hair').value='';document.querySelector('#compose-random-portrait-hair').dispatchEvent(new Event('change'))");
   const desktopLayout = await evalJs(`(()=>{
     const pos=id=>{const r=document.querySelector(id).getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height,right:r.right,bottom:r.bottom}};
     return {workbench:pos('.compose-workbench'),
@@ -202,9 +220,133 @@ async function main() {
   assert.ok(adaptiveCanvas[5][2] > adaptiveCanvas[5][0]);
   // Four / nine grid: real UI switching, unique selections and per-cell reroll.
   await evalJs("document.querySelector('#compose-mode-four').click()");
+  const promptLayout = await evalJs(`(()=>{
+    const prompt=document.querySelector('#compose-grid-prompt-box');
+    const settings=document.querySelector('.compose-grid-sidebar');
+    const body=document.querySelector('.compose-grid-body');
+    const sidebar=prompt.closest('.compose-grid-sidebar');
+    const directChildren=[...body.children];
+    const initiallyOpen=prompt.open;
+    prompt.open=false;
+    const closed={inside:sidebar===settings,numberOfColumns:directChildren.length,
+      afterShuffle:prompt.compareDocumentPosition(document.querySelector('#compose-grid-shuffle'))&
+        Node.DOCUMENT_POSITION_PRECEDING,
+      closed:!prompt.open};
+    prompt.open=true;
+    const box=prompt.getBoundingClientRect();
+    const settingsBox=settings.getBoundingClientRect();
+    const textarea=document.querySelector('#compose-grid-prompt-text').getBoundingClientRect();
+    const expanded={promptWithin:box.left>=settingsBox.left &&
+      box.right<=settingsBox.right+1, textareaWithin:textarea.right<=settingsBox.right+1,
+      noOverflow:document.documentElement.scrollWidth<=innerWidth,
+      cardHeight:settingsBox.height, textareaHeight:textarea.height};
+    return {initiallyOpen,closed,expanded};
+  })()`);
+  assert.ok(promptLayout.initiallyOpen,"The prompt should be visible in the settings card by default");
+  assert.ok(promptLayout.closed.inside,"AI prompt must live inside the right settings card");
+  assert.equal(promptLayout.closed.numberOfColumns,3,"Prompt must not create an extra grid row");
+  assert.ok(promptLayout.closed.afterShuffle && promptLayout.closed.closed);
+  assert.ok(promptLayout.expanded.promptWithin && promptLayout.expanded.textareaWithin);
+  assert.ok(promptLayout.expanded.noOverflow,"Expanded prompt must fit the settings column");
+  assert.ok(promptLayout.expanded.textareaHeight<=175);
+  // The reference editor uses THREE purposeful desktop columns: pair grid,
+  // shared face, then only the composition/export controls.
+  const gridDesktop = await evalJs(`(()=>{
+    const bounds=id=>{const r=document.querySelector(id).getBoundingClientRect();
+      return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,w:r.width,h:r.height};};
+    return {gallery:bounds('.compose-grid-gallery'),face:bounds('.compose-grid-face-card'),
+      settings:bounds('.compose-grid-sidebar'),
+      galleryGrid:bounds('#compose-grid-tiles'),
+      status:bounds('#compose-grid-status'),
+      actions:bounds('.compose-grid-actions'),
+      firstAction:bounds('#compose-grid-preview'),
+      lastAction:bounds('#compose-grid-download'),
+      chooseInside:document.querySelector('.compose-grid-face-card').contains(
+        document.querySelector('#compose-grid-choose-person')),
+      shuffleInside:document.querySelector('.compose-grid-sidebar').contains(
+        document.querySelector('#compose-grid-shuffle')),
+      promptInside:document.querySelector('.compose-grid-sidebar').contains(
+        document.querySelector('#compose-grid-prompt-box')),
+      downloadInside:document.querySelector('.compose-grid-sidebar').contains(
+        document.querySelector('#compose-grid-download')),
+      faceTitle:document.querySelector('#compose-grid-face-title').textContent,
+      overflow:document.documentElement.scrollWidth>innerWidth};
+  })()`);
+  assert.ok(gridDesktop.gallery.right <= gridDesktop.face.x + 1);
+  assert.ok(gridDesktop.face.right <= gridDesktop.settings.x + 1);
+  assert.ok(Math.abs(gridDesktop.gallery.y - gridDesktop.face.y) < 2);
+  assert.ok(Math.abs(gridDesktop.face.y - gridDesktop.settings.y) < 2);
+  assert.ok(Math.abs(gridDesktop.gallery.bottom - gridDesktop.face.bottom) < 2,
+    "Reference grid card and face card should have aligned bottom edges");
+  assert.ok(Math.abs(gridDesktop.face.bottom - gridDesktop.settings.bottom) < 2,
+    "Face and settings cards should be exactly the same height");
+  assert.ok(gridDesktop.status.bottom < gridDesktop.gallery.bottom,
+    "Grid status belongs inside the aligned gallery card");
+  assert.ok(gridDesktop.actions.h >= 130 && gridDesktop.actions.h < 175 &&
+    gridDesktop.lastAction.bottom < gridDesktop.settings.bottom,
+    "Export controls should use compact spacing without empty vertical stretches");
+  assert.ok(gridDesktop.firstAction.y < gridDesktop.lastAction.y - 90,
+    "Export actions should be evenly distributed rather than clustered at the bottom");
+  assert.ok(gridDesktop.chooseInside && gridDesktop.shuffleInside &&
+    gridDesktop.promptInside && gridDesktop.downloadInside);
+  assert.equal(gridDesktop.faceTitle,"人物参考");
+  assert.equal(gridDesktop.overflow,false);
+  await command("Emulation.setDeviceMetricsOverride", {
+    width: 900, height: 900, deviceScaleFactor: 1, mobile: false
+  });
+  const gridTablet = await evalJs(`(()=>{
+    const g=document.querySelector('.compose-grid-gallery').getBoundingClientRect();
+    const f=document.querySelector('.compose-grid-face-card').getBoundingClientRect();
+    const s=document.querySelector('.compose-grid-sidebar').getBoundingClientRect();
+    return {faceBelow:f.top>=g.bottom-1,settingsBelow:s.top>=g.bottom-1,
+      sideBySide:s.left>=f.right-1,overflow:document.documentElement.scrollWidth>innerWidth};
+  })()`);
+  assert.deepEqual(gridTablet,{faceBelow:true,settingsBelow:true,sideBySide:true,overflow:false});
+  await command("Emulation.setDeviceMetricsOverride", {
+    width: 390, height: 844, deviceScaleFactor: 1, mobile: true
+  });
+  const gridPhone = await evalJs(`(()=>{
+    const g=document.querySelector('.compose-grid-gallery').getBoundingClientRect();
+    const f=document.querySelector('.compose-grid-face-card').getBoundingClientRect();
+    const s=document.querySelector('.compose-grid-sidebar').getBoundingClientRect();
+    return {faceBelow:f.top>=g.bottom-1,settingsBelow:s.top>=f.bottom-1,
+      overflow:document.documentElement.scrollWidth>innerWidth};
+  })()`);
+  assert.deepEqual(gridPhone,{faceBelow:true,settingsBelow:true,overflow:false});
+  await command("Emulation.setDeviceMetricsOverride", {
+    width: 1440, height: 900, deviceScaleFactor: 1, mobile: false
+  });
+  assert.equal(await evalJs("state.composition.gridUsePerson"),true);
+  assert.equal(await evalJs("document.querySelector('#compose-grid-person-preview').hidden"),false);
+  assert.match(await evalJs("document.querySelector('#compose-grid-person-preview img').src"),/portrait\/thumb/);
+  assert.equal(await evalJs("document.querySelector('#compose-grid-person-preview img').decode().then(()=>true,()=>false)"),
+    true,"The shared grid portrait must visibly load");
+  const sharedFaceBefore = await evalJs("state.composition.person.id");
   assert.equal(await evalJs("document.querySelector('#compose-workbench').hidden"), true);
   assert.equal(await evalJs("document.querySelector('#compose-grid-panel').hidden"), false);
   assert.equal(await evalJs("state.composition.gridItems.length"), 4);
+  const fourPrompt = await evalJs("document.querySelector('#compose-grid-prompt-text').value");
+  assert.match(fourPrompt,/2×2/);
+  assert.match(fourPrompt,/第 1 行第 1 列/);
+  assert.match(fourPrompt,/第 2 行第 2 列/);
+  assert.ok(fourPrompt.includes(sharedFaceBefore), "Catalog face ID should appear in the shared-person instruction");
+  assert.equal(await evalJs("document.querySelector('#compose-grid-copy-prompt').disabled"),false);
+  const fourPairIds = await evalJs("state.composition.gridItems.map(x=>[x.pose.id,x.outfit.id])");
+  for (const [poseId,outfitId] of fourPairIds) {
+    assert.ok(fourPrompt.includes(poseId) && fourPrompt.includes(outfitId),
+      "Four-grid prompt must include the exact IDs of every visible pairing");
+  }
+  await evalJs("document.querySelector('#compose-grid-use-person').click()");
+  const withoutFace = await evalJs("document.querySelector('#compose-grid-prompt-text').value");
+  assert.match(withoutFace,/未指定统一人物/);
+  assert.ok(!withoutFace.includes(sharedFaceBefore));
+  await evalJs("document.querySelector('#compose-grid-use-person').click()");
+  assert.equal(await evalJs("document.querySelector('#compose-grid-prompt-text').value"),fourPrompt);
+  await evalJs("Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async value=>{window.__gridCopiedPrompt=value}}})");
+  await evalJs("document.querySelector('#compose-grid-copy-prompt').onclick()");
+  assert.equal(await evalJs("window.__gridCopiedPrompt"),fourPrompt);
+  assert.equal(await evalJs("document.querySelector('#compose-grid-prompt-status').textContent"),
+    await evalJs("ReferenceGalleryI18n.t('composeCopiedPrompt')"));
   assert.equal(await evalJs("new Set(state.composition.gridItems.map(x=>x.pose.pose_key)).size"), 4);
   assert.equal(await evalJs("new Set(state.composition.gridItems.map(x=>x.outfit.id)).size"), 4);
   assert.equal(await evalJs("document.querySelectorAll('.compose-grid-tile').length"), 4);
@@ -213,6 +355,10 @@ async function main() {
   assert.equal(await evalJs("document.querySelector('#compose-grid-preview').disabled"), false);
   const firstGrid = await evalJs("state.composition.gridItems.map(x=>[x.pose.pose_key,x.outfit.id])");
   await evalJs("document.querySelector('.compose-grid-tile').click()");
+  const updatedFourPrompt = await evalJs("document.querySelector('#compose-grid-prompt-text').value");
+  assert.notEqual(updatedFourPrompt,fourPrompt,"Rerolling one cell must refresh its prompt entry");
+  assert.equal(await evalJs("state.composition.person.id"),sharedFaceBefore,
+    "Rerolling an individual grid cell must keep the shared face");
   assert.notDeepEqual(await evalJs("[state.composition.gridItems[0].pose.pose_key,state.composition.gridItems[0].outfit.id]"), firstGrid[0]);
   assert.notEqual(await evalJs("state.composition.gridItems[0].pose.pose_key"), firstGrid[0][0]);
   assert.notEqual(await evalJs("state.composition.gridItems[0].outfit.id"), firstGrid[0][1]);
@@ -220,9 +366,125 @@ async function main() {
   assert.equal(await evalJs("new Set(state.composition.gridItems.map(x=>x.pose.pose_key)).size"), 4);
   assert.equal(await evalJs("new Set(state.composition.gridItems.map(x=>x.outfit.id)).size"), 4);
   await evalJs("document.querySelector('#compose-grid-shuffle').click()");
+  assert.notEqual(await evalJs("state.composition.person.id"),sharedFaceBefore,
+    "Full grid shuffle should also draw a different shared face");
+  assert.equal(await evalJs("document.querySelector('#compose-grid-person-preview img').alt"),
+    await evalJs("state.composition.person.id"));
+  // The grid-specific upload control must use the existing validated person
+  // upload pipeline and keep a user-owned image through whole-grid shuffles.
+  const customGridPhoto = await evalJs(`(async()=>{
+    const button=document.querySelector('#compose-grid-upload-person');
+    const input=document.querySelector('#compose-grid-person-input');
+    const originalClick=input.click;
+    let clicked=0;
+    input.click=()=>{clicked++;};
+    button.click();
+    input.click=originalClick;
+    const canvas=document.createElement('canvas');canvas.width=90;canvas.height=120;
+    const ctx=canvas.getContext('2d');ctx.fillStyle='#8044ee';ctx.fillRect(0,0,90,120);
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+    const file=new File([blob],'custom-grid-face.png',{type:'image/png'});
+    const files=new DataTransfer();files.items.add(file);
+    input.files=files.files;
+    input.dispatchEvent(new Event('change',{bubbles:true}));
+    for(let i=0;i<50 && !state.composition.person?.uploadUrl;i++){
+      await new Promise(resolve=>setTimeout(resolve,20));
+    }
+    const person=state.composition.person;
+    return {clicked,accept:input.accept,id:person?.id,url:person?.uploadUrl,
+      enabled:state.composition.gridUsePerson,inputReset:input.value,
+      visible:!document.querySelector('#compose-grid-person-preview').hidden,
+      preview:document.querySelector('#compose-grid-person-preview img')?.src};
+  })()`);
+  assert.equal(customGridPhoto.clicked,1,"Upload button should open the grid file input");
+  assert.match(customGridPhoto.accept,/image\/png/);
+  assert.equal(customGridPhoto.id,"custom-grid-face.png");
+  assert.match(customGridPhoto.url,/^blob:/);
+  assert.equal(customGridPhoto.enabled,true);
+  assert.equal(customGridPhoto.inputReset,"");
+  assert.equal(customGridPhoto.visible,true);
+  assert.equal(customGridPhoto.preview,customGridPhoto.url);
+  const customFacePrompt = await evalJs("document.querySelector('#compose-grid-prompt-text').value");
+  assert.match(customFacePrompt,/上传的人物照片/);
+  assert.ok(!customFacePrompt.includes("custom-grid-face.png"),
+    "The prompt should not reveal a user-uploaded filename");
+  assert.equal(await evalJs("document.querySelector('#compose-grid-person-preview img').decode().then(()=>true,()=>false)"),true);
+  // Invalid files must never discard the current custom face or disable it.
+  const invalidGridPhoto = await evalJs(`(async()=>{
+    const input=document.querySelector('#compose-grid-person-input');
+    const files=new DataTransfer();files.items.add(new File(['broken'],'broken.png',{type:'image/png'}));
+    input.files=files.files;input.dispatchEvent(new Event('change',{bubbles:true}));
+    await new Promise(resolve=>setTimeout(resolve,80));
+    return [state.composition.person?.uploadUrl,state.composition.gridUsePerson,
+      document.querySelector('#compose-grid-status').dataset.status,
+      document.querySelector('#compose-grid-status').textContent];
+  })()`);
+  assert.equal(invalidGridPhoto[0],customGridPhoto.url);
+  assert.equal(invalidGridPhoto[1],true);
+  assert.equal(invalidGridPhoto[2],"error");
+  assert.ok(invalidGridPhoto[3].length>0);
+  await evalJs("document.querySelector('#compose-grid-shuffle').click()");
+  assert.equal(await evalJs("state.composition.person.uploadUrl"),customGridPhoto.url,
+    "Shuffling pose/outfit pairs should preserve a custom uploaded face");
+  assert.match(await evalJs("document.querySelector('#compose-grid-prompt-text').value"),/上传的人物照片/);
+  const uploadedGridArtwork = await evalJs(`(async()=>{
+    const canvas=document.createElement('canvas');
+    const urls=[];
+    try {
+      for(const color of ['#dd3322','#22bbaa']){
+        const c=document.createElement('canvas');c.width=90;c.height=140;
+        const ctx=c.getContext('2d');ctx.fillStyle=color;ctx.fillRect(0,0,90,140);
+        const blob=await new Promise(resolve=>c.toBlob(resolve,'image/png'));
+        urls.push(URL.createObjectURL(blob));
+      }
+      const items=Array.from({length:4},(_,i)=>({
+        pose:{uploadUrl:urls[0],id:'POSE'+i},
+        outfit:{uploadUrl:urls[1],id:'OUTFIT'+i}
+      }));
+      const options={mode:'four',items,person:state.composition.person,
+        background:'white',labels:false};
+      await ReferenceComposition.draw(canvas,options);
+      const pixel=Array.from(canvas.getContext('2d').getImageData(50,60,1,1).data).slice(0,3);
+      const blob=await ReferenceComposition.exportPNG(options);
+      const bitmap=await createImageBitmap(blob);
+      const result={preview:[canvas.width,canvas.height],export:[bitmap.width,bitmap.height],
+        pixel,size:blob.size};
+      bitmap.close();
+      return result;
+    } finally {urls.forEach(url=>URL.revokeObjectURL(url));}
+  })()`);
+  assert.deepEqual(uploadedGridArtwork.preview,[720,720]);
+  assert.deepEqual(uploadedGridArtwork.export,[2048,2048]);
+  assert.deepEqual(uploadedGridArtwork.pixel,[128,68,238],
+    "Uploaded face must be painted into the shared-person grid header");
+  assert.ok(uploadedGridArtwork.size>1000);
+  await evalJs("document.querySelector('#compose-grid-random-person').click()");
+  assert.equal(await evalJs("state.composition.person.uploadUrl"),undefined,
+    "Explicitly choosing Random face should replace the custom uploaded photo");
+  assert.equal(await evalJs("state.composition.gridUsePerson"),true);
   assert.equal(await evalJs("new Set(state.composition.gridItems.map(x=>x.pose.pose_key)).size"), 4);
   assert.equal(await evalJs("new Set(state.composition.gridItems.map(x=>x.outfit.id)).size"), 4);
   await evalJs("document.querySelector('#compose-mode-nine').click()");
+  const ninePrompt = await evalJs("document.querySelector('#compose-grid-prompt-text').value");
+  assert.match(ninePrompt,/3×3/);
+  assert.match(ninePrompt,/第 3 行第 3 列/);
+  assert.ok(!ninePrompt.includes("2×2"));
+  assert.equal((ninePrompt.match(/第 \d 行第 \d 列/g)||[]).length,9);
+  const ninePairIds = await evalJs("state.composition.gridItems.map(x=>[x.pose.id,x.outfit.id])");
+  for(const [poseId,outfitId] of ninePairIds) {
+    assert.ok(ninePrompt.includes(poseId) && ninePrompt.includes(outfitId),
+      "Nine-grid prompt must contain all 9 pose/outfit ID pairs");
+  }
+  const nineHeight = await evalJs(`(()=>{
+    const g=document.querySelector('.compose-grid-gallery').getBoundingClientRect();
+    const f=document.querySelector('.compose-grid-face-card').getBoundingClientRect();
+    const s=document.querySelector('.compose-grid-sidebar').getBoundingClientRect();
+    return [g.bottom,f.bottom,s.bottom,g.top,f.top,s.top];
+  })()`);
+  assert.ok(Math.max(...nineHeight.slice(0,3)) - Math.min(...nineHeight.slice(0,3)) < 2,
+    "Nine-grid bottom edges should align across all three cards");
+  assert.ok(Math.max(...nineHeight.slice(3,6)) - Math.min(...nineHeight.slice(3,6)) < 2,
+    "Nine-grid card tops should align");
   assert.equal(await evalJs("document.querySelectorAll('.compose-grid-tile').length"), 9);
   assert.equal(await evalJs("document.querySelectorAll('.compose-grid-tile img').length"), 18);
   assert.equal(await evalJs("new Set(state.composition.gridItems.map(x=>x.pose.pose_key)).size"), 9);
@@ -251,10 +513,27 @@ async function main() {
       document.querySelector('#compose-random-pose-filter').dispatchEvent(new Event('change'))`);
     assert.equal(await evalJs("state.composition.gridItems.length"),0);
     assert.equal(await evalJs("document.querySelector('#compose-grid-download').disabled"),true);
+    assert.equal(await evalJs("document.querySelector('#compose-grid-copy-prompt').disabled"),true);
+    assert.equal(await evalJs("document.querySelector('#compose-grid-prompt-text').value"),
+      await evalJs("ReferenceGalleryI18n.t('composeGridPromptEmpty')"));
     assert.match(await evalJs("document.querySelector('#compose-grid-status').textContent"),/各至少 9/);
     await evalJs("document.querySelector('#compose-random-pose-filter').value='';document.querySelector('#compose-random-pose-filter').dispatchEvent(new Event('change'))");
     assert.equal(await evalJs("new Set(state.composition.gridItems.map(x=>x.pose.pose_key)).size"),9);
+    assert.equal(await evalJs("document.querySelector('#compose-grid-copy-prompt').disabled"),false);
   }
+  await evalJs("document.querySelector('#lang-en').click()");
+  assert.match(await evalJs("document.querySelector('#compose-grid-prompt-text').value"),/Row 3, column 3/);
+  assert.equal(await evalJs("document.querySelector('#compose-grid-copy-prompt').textContent"),"Copy prompt");
+  await evalJs("document.querySelector('#lang-ja').click()");
+  assert.match(await evalJs("document.querySelector('#compose-grid-prompt-text').value"),/3行3列/);
+  await evalJs("document.querySelector('#lang-zh').click()");
+  await evalJs("Object.defineProperty(navigator,'clipboard',{configurable:true,value:{}})");
+  await evalJs("document.querySelector('#compose-grid-copy-prompt').onclick()");
+  assert.equal(await evalJs("document.querySelector('#compose-grid-prompt-box').open"),true,
+    "Grid copy fallback should open and select the prompt");
+  assert.equal(await evalJs("document.activeElement.id"),"compose-grid-prompt-text");
+  assert.equal(await evalJs("document.querySelector('#compose-grid-prompt-status').textContent"),
+    await evalJs("ReferenceGalleryI18n.t('composeCopyError')"));
   await evalJs("document.querySelector('#compose-grid-labels').click()");
   assert.equal(await evalJs("document.querySelectorAll('.compose-grid-tile-code').length"), 0);
   await evalJs("document.querySelector('#compose-grid-labels').click()");
@@ -282,6 +561,10 @@ async function main() {
       const pairs=Array.from({length:9},(_,i)=>({pose:entries[i*2],outfit:entries[i*2+1]}));
       const four=document.createElement('canvas');
       await ReferenceComposition.draw(four,{mode:'four',items:pairs.slice(0,4),background:'white',labels:false});
+      const shared=document.createElement('canvas');
+      await ReferenceComposition.draw(shared,{mode:'four',items:pairs.slice(0,4),
+        person:entries[8],background:'white',labels:false});
+      const sharedPixel=Array.from(shared.getContext('2d').getImageData(50,60,1,1).data).slice(0,3);
       const originalText=CanvasRenderingContext2D.prototype.fillText;
       const paintedCodes=[];
       CanvasRenderingContext2D.prototype.fillText=function(code,...args){
@@ -313,7 +596,7 @@ async function main() {
       }
       const expected=colors.map(code=>[1,3,5].map(j=>parseInt(code.slice(j,j+2),16)));
       const result=[four.width,four.height,nine.width,nine.height,actual.width,actual.height,
-        exported.size,pixels,fourBitmap.width,fourBitmap.height,expected,paintedCodes];
+        exported.size,pixels,fourBitmap.width,fourBitmap.height,expected,paintedCodes,sharedPixel];
       actual.close();
       fourBitmap.close();
       return result;
@@ -326,6 +609,8 @@ async function main() {
     "Each cell must show its specific pose on the left and outfit on the right");
   assert.deepEqual(gridPixels[11],Array.from({length:8},(_,i)=>'GRID-'+i),
     "Each paired grid cell must render both image IDs in pose/outfit order");
+  assert.deepEqual(gridPixels[12],[128,85,51],
+    "A shared person image should render in the separate four-grid header");
   await evalJs("document.querySelector('#compose-mode-reference').click()");
   assert.equal(await evalJs("document.querySelector('#compose-grid-panel').hidden"), true);
   assert.equal(await evalJs("document.querySelector('#compose-workbench').hidden"), false);
@@ -477,7 +762,7 @@ async function main() {
   await evalJs("document.querySelector('#compose-labels').click()");
   await evalJs("document.querySelector('#type-pose').click()");
   assert.equal(await evalJs("document.querySelector('#footer-note').textContent"),
-    "ai-reference-gallery · 图片与原始数据版权归原作者ギア所有 · 该版本由 vculjp 整理维护");
+    await evalJs("ReferenceGalleryI18n.t('footer')"));
   assert.equal(await evalJs("document.querySelector('#github-link').href"), "https://github.com/vculjp/ai-reference-gallery");
   assert.equal(await evalJs("document.querySelector('#x-link').href"), "https://x.com/vculjp");
   // A stale stylesheet makes these links blue, underlined and vertically misaligned online.
@@ -590,6 +875,47 @@ async function main() {
   assert.equal(await evalJs("(()=>{const modal=document.querySelector('#compose-preview-dialog').getBoundingClientRect(),stage=document.querySelector('.compose-preview-stage').getBoundingClientRect();return modal.left>=0&&modal.right<=innerWidth&&modal.top>=0&&modal.bottom<=innerHeight&&stage.height>80})()"), true,
     "The portrait preview should fit within a 320×700 viewport");
   await evalJs("document.querySelector('#compose-preview-close').click()");
+  // Face catalog: browse both source sections, filter hairstyles and select
+  // a real face as the optional third reference.
+  await evalJs("document.querySelector('#compose-choose-person').click()");
+  assert.equal(await evalJs("state.type"), "portrait");
+  assert.equal(await evalJs("state.portraitImages.length"), 1499);
+  assert.equal(await evalJs("state.records.length"), 1499);
+  assert.equal(await evalJs("document.querySelectorAll('.card').length"), 60);
+  await evalJs("document.querySelector('#series').querySelectorAll('button')[1].click()");
+  assert.equal(await evalJs("state.records.length"), 893);
+  await evalJs("document.querySelector('#series').querySelectorAll('button')[2].click()");
+  assert.equal(await evalJs("state.records.length"), 606);
+  await evalJs("document.querySelector('#series').querySelectorAll('button')[1].click()");
+  await evalJs("document.querySelector('.card').click()");
+  const chosenFace = await evalJs("state.selected.id");
+  assert.match(await evalJs("document.querySelector('#largeImage').src"), /img\/portrait\/original\/[a-z0-9]{11}\.png/);
+  await evalJs("document.querySelector('#add-to-compose').click()");
+  assert.equal(await evalJs("state.type"), "compose");
+  assert.equal(await evalJs("state.composition.person.id"), chosenFace);
+  assert.equal(await evalJs("state.composition.gridUsePerson"), false);
+  assert.ok(await evalJs("document.querySelector('#compose-person-preview img')!==null"));
+  await evalJs("document.querySelector('#compose-mode-nine').click()");
+  assert.equal(await evalJs("document.querySelector('#compose-grid-use-person').disabled"), false);
+  await evalJs("document.querySelector('#compose-grid-use-person').click()");
+  assert.equal(await evalJs("state.composition.gridUsePerson"), true);
+  assert.equal(await evalJs("composeUI ? ReferenceComposition.needsFolder() : false"), !/^https?:/.test(galleryUrl));
+  // Clearing the shared face restores the existing two-image / grid behavior.
+  await evalJs("document.querySelector('#compose-mode-reference').click()");
+  if (/^https?:/.test(galleryUrl)) {
+    await evalJs("document.querySelector('#compose-random-pair').click()");
+    const portraitPNG = await evalJs(`(async()=>{
+      const blob=await ReferenceComposition.exportPNG({...state.composition,mode:'reference'});
+      const bitmap=await createImageBitmap(blob);
+      const output=[bitmap.width,bitmap.height,blob.size];
+      bitmap.close();
+      return output;
+    })()`);
+    assert.ok(portraitPNG[0] > 1000 && portraitPNG[1] > 500 && portraitPNG[2] > 100000,
+      "The selected on-site portrait original must load into an actual three-reference PNG");
+  }
+  await evalJs("document.querySelector('#compose-remove-person').click()");
+  assert.equal(await evalJs("state.composition.person"), null);
   if (/^https?:/.test(galleryUrl)) {
     assert.equal(await evalJs("ReferenceComposition.needsFolder()"), false);
     assert.equal(await evalJs("document.querySelector('#compose-local-notice').hidden"), true);
@@ -667,6 +993,59 @@ async function main() {
     const gridBytes=fs.readFileSync(path.join(profile,gridFile));
     assert.equal(gridBytes.readUInt32BE(16),3072);
     assert.equal(gridBytes.readUInt32BE(20),3072);
+    // The nine-grid's real copy/export path must incorporate a photo uploaded
+    // from the grid controls, not silently fall back to the previous face.
+    const uploadedGridClipboard=await evalJs(`(async()=>{
+      const input=document.querySelector('#compose-grid-person-input');
+      const photo=document.createElement('canvas');photo.width=90;photo.height=120;
+      const ctx=photo.getContext('2d');ctx.fillStyle='#8740bc';ctx.fillRect(0,0,90,120);
+      const png=await new Promise(resolve=>photo.toBlob(resolve,'image/png'));
+      const dt=new DataTransfer();
+      dt.items.add(new File([png],'grid-nine-custom.png',{type:'image/png'}));
+      input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));
+      for(let i=0;i<50 && state.composition.person?.id!=='grid-nine-custom.png';i++){
+        await new Promise(resolve=>setTimeout(resolve,20));
+      }
+      let copied;
+      Object.defineProperty(navigator,'clipboard',{configurable:true,value:{
+        write:async items=>{copied=await items[0].getType('image/png')},
+        writeText:async()=>{}
+      }});
+      await document.querySelector('#compose-grid-copy').onclick();
+      const bitmap=await createImageBitmap(copied);
+      const sample=document.createElement('canvas');sample.width=1;sample.height=1;
+      const paint=sample.getContext('2d');
+      paint.drawImage(bitmap,150,150,1,1,0,0,1,1);
+      const rgb=Array.from(paint.getImageData(0,0,1,1).data).slice(0,3);
+      const result={id:state.composition.person?.id,
+        enabled:state.composition.gridUsePerson,
+        width:bitmap.width,height:bitmap.height,rgb};
+      bitmap.close();
+      return result;
+    })()`);
+    assert.equal(uploadedGridClipboard.id,"grid-nine-custom.png");
+    assert.equal(uploadedGridClipboard.enabled,true);
+    assert.deepEqual([uploadedGridClipboard.width,uploadedGridClipboard.height],[3072,3072]);
+    assert.deepEqual(uploadedGridClipboard.rgb,[135,64,188],
+      "Nine-grid copy must paint the uploaded face into the shared-person header");
+    const beforeDownloads=new Set(fs.readdirSync(profile));
+    await evalJs("document.querySelector('#compose-grid-download').click()");
+    let uploadedGridFile;
+    for(let i=0;i<140;i++){
+      uploadedGridFile=fs.readdirSync(profile).find(name=>{
+        if(!name.startsWith('9grid_') || !name.endsWith('.png'))return false;
+        if(!beforeDownloads.has(name))return true;
+        // Chrome may overwrite the original name rather than append "(1)".
+        try { return !fs.readFileSync(path.join(profile,name)).equals(gridBytes); }
+        catch (_) { return false; }
+      });
+      if(uploadedGridFile)break;
+      await sleep(150);
+    }
+    assert.ok(uploadedGridFile,"Nine-grid with uploaded face must download an updated PNG");
+    const uploadedBytes=fs.readFileSync(path.join(profile,uploadedGridFile));
+    assert.equal(uploadedBytes.readUInt32BE(16),3072);
+    assert.equal(uploadedBytes.readUInt32BE(20),3072);
     console.log("PASS: HTTP reference + nine-grid copy/download PNG, no folder authorization");
     ws.close();
     return;
@@ -763,7 +1142,8 @@ async function main() {
   assert.equal(await evalJs("document.documentElement.scrollWidth <= window.innerWidth"), true);
   await evalJs("document.querySelector('#lang-ja').click()");
   assert.equal(await evalJs("document.querySelector('#type-compose').textContent"), "組み合わせ");
-  assert.equal(await evalJs("document.querySelector('#compose-random-pair-label').textContent"), "両方ランダム");
+  assert.equal(await evalJs("document.querySelector('#compose-random-pair-label').textContent"), "3つともランダム");
+  assert.equal(await evalJs("document.querySelector('#compose-random-person').textContent"), "顔を抽選");
   assert.equal(await evalJs("document.querySelector('#compose-random-pose').textContent"), "ポーズを抽選");
   assert.equal(await evalJs("document.querySelector('#compose-random-outfit-filter-label').textContent"), "衣装カテゴリー");
   assert.equal(await evalJs("document.querySelector('#compose-prompt-title').textContent"), "AI制作プロンプト");
@@ -772,6 +1152,7 @@ async function main() {
   await evalJs("document.querySelector('#lang-en').click()");
   assert.equal(await evalJs("document.querySelector('#type-compose').textContent"), "Compose");
   assert.equal(await evalJs("document.querySelector('#compose-random-costume').textContent"), "Random outfit");
+  assert.equal(await evalJs("document.querySelector('#compose-random-person').textContent"), "Random face");
   assert.equal(await evalJs("document.querySelector('#compose-random-pose-filter-label').textContent"), "Pose category");
   assert.match(await evalJs("document.querySelector('#compose-prompt-text').value"), /Create a finished character image/);
   console.log("PASS: composition selection, fixed order and offline PNG export via user-selected files");

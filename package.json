@@ -1,0 +1,38 @@
+{
+  "name": "@vculjp/ai-reference-gallery",
+  "version": "0.1.0",
+  "description": "Standalone pose and outfit reference gallery CLI and Agent Skill. Generates PNG boards without downloading the full image library.",
+  "license": "MIT",
+  "type": "commonjs",
+  "bin": {
+    "ai-reference-gallery": "bin/ai-reference-gallery.cjs"
+  },
+  "exports": {
+    "./catalog": "./.agents/skills/ai-reference-gallery/scripts/catalog-api.cjs",
+    "./catalog-manifest": "./.agents/skills/ai-reference-gallery/data/catalog-v1.json.gz"
+  },
+  "files": [
+    "bin/",
+    ".agents/skills/ai-reference-gallery/",
+    "ASSETS.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build:catalog": "node .agents/skills/ai-reference-gallery/scripts/build-bundle.cjs",
+    "check:catalog": "node .agents/skills/ai-reference-gallery/scripts/build-bundle.cjs --check",
+    "test": "node --test scripts/test-distribution.cjs",
+    "test:full": "node test_i18n.cjs && node --test scripts/test-skill.cjs",
+    "preview": "node scripts/serve-local.cjs",
+    "prepack": "node .agents/skills/ai-reference-gallery/scripts/build-bundle.cjs --check"
+  },
+  "keywords": [
+    "agent-skills",
+    "pose-reference",
+    "outfit-gallery",
+    "ai-reference",
+    "four-grid",
+    "nine-grid"
+  ]
+}

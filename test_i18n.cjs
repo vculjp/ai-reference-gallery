@@ -24,6 +24,22 @@ vm.runInNewContext(fs.readFileSync(path.join(root, "catalog.js"), "utf8"), catal
 const records = catalogContext.window.POSE_GALLERY_CATALOG;
 vm.runInNewContext(fs.readFileSync(path.join(root, "costume-catalog.js"), "utf8"), catalogContext);
 const costumes = catalogContext.window.COSTUME_GALLERY_CATALOG;
+vm.runInNewContext(fs.readFileSync(path.join(root, "portrait-catalog.js"), "utf8"), catalogContext);
+const portraits = catalogContext.window.PORTRAIT_GALLERY_CATALOG;
+
+test("1,499 licensed portrait references have distinct IDs and local thumbnail assets", () => {
+  assert.equal(portraits.length, 1499);
+  assert.equal(portraits.filter((x) => x.section === "face").length, 893);
+  assert.equal(portraits.filter((x) => x.section === "styling").length, 606);
+  assert.equal(new Set(portraits.map((x) => x.id)).size, 1499);
+  for (const item of portraits) {
+    assert.match(item.original, /^img\/portrait\/original\/[a-z0-9]{11}\.png$/);
+    assert.match(item.thumbnail, /^img\/portrait\/thumb\/[a-z0-9]{11}\.webp$/);
+    assert.ok(fs.statSync(path.join(root, item.thumbnail)).size > 100);
+    const original = path.join(root, item.original);
+    assert.ok(fs.statSync(original).size > 100, `Missing portrait original ${item.id}`);
+  }
+});
 
 test("project root contains no empty files accidentally created by shell commands", () => {
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
@@ -164,14 +180,70 @@ test("four-grid and nine-grid use unique catalog references and fixed square lay
   assert.ok(ui.includes('setGridStatus("composeGridInsufficient"'));
 });
 
+test("one-click random selection includes an actual face and shared grid face controls", () => {
+  const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  const controller = fs.readFileSync(path.join(root, "composition-ui.js"), "utf8");
+  for (const id of ["compose-random-person", "compose-grid-random-person",
+    "compose-random-portrait-section", "compose-random-portrait-hair",
+    "compose-grid-person-preview"]) {
+    assert.ok(html.includes(`id="${id}"`), `Missing random face control ${id}`);
+  }
+  assert.match(controller, /function drawRandomPerson\(/);
+  assert.match(controller, /which === "both" \|\| which === "person"/);
+  assert.match(controller, /shuffleGrid\(true\)/);
+  assert.match(controller, /function eligiblePortraits\(/);
+  assert.ok(i18n.t("composeRandomPerson"));
+});
+
+test("grid uses the validated person uploader and preserves custom photos across shuffle", () => {
+  const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  const ui = fs.readFileSync(path.join(root, "composition-ui.js"), "utf8");
+  assert.match(html, /id="compose-grid-upload-person"/);
+  assert.match(html, /id="compose-grid-person-input"[^>]+accept="image\/png,image\/jpeg,image\/webp"/);
+  assert.match(ui, /uploadPersonImage\(event\.target\.files\[0\], "grid"\)/);
+  assert.match(ui, /async function uploadPersonImage\(file, target = "reference"\)/);
+  assert.match(ui, /state\.composition\.gridUsePerson = target === "grid"/);
+  assert.match(ui, /!state\.composition\.person\?\.uploadUrl && drawRandomPerson\(\)/);
+});
+
+test("four/nine grid prompts follow actual selections and have accessible copy and translation controls", () => {
+  const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  const ui = fs.readFileSync(path.join(root, "composition-ui.js"), "utf8");
+  for (const id of ["compose-grid-prompt-box", "compose-grid-prompt-text",
+    "compose-grid-prompt-title", "compose-grid-prompt-help", "compose-grid-copy-prompt",
+    "compose-grid-prompt-status"]) {
+    assert.ok(html.includes(`id="${id}"`), `Missing grid prompt control ${id}`);
+  }
+  const rightCard = html.slice(html.indexOf('class="compose-grid-sidebar"'),
+    html.indexOf('</section>', html.indexOf('class="compose-grid-sidebar"')));
+  assert.ok(rightCard.includes('id="compose-grid-prompt-box"'),
+    "AI prompt must stay inside the right-hand settings card, not beneath the grids");
+  assert.equal((html.match(/id="compose-grid-prompt-box"/g)||[]).length, 1);
+  assert.match(ui, /function updateGridPrompt\(/);
+  assert.match(ui, /gridItems\.map\(\(\{pose, outfit\}, index\)/);
+  assert.match(ui, /person\.uploadUrl \? t\("composeGridPromptPersonUpload"\)/);
+  assert.match(ui, /updateGridPrompt\(\);/);
+  assert.match(ui, /\$\("compose-grid-copy-prompt"\)\.onclick = \(\) => copyPrompt\(true\)/);
+  for (const locale of ["zh-CN", "en", "ja"]) {
+    i18n.setLocale(locale);
+    for (const key of ["composeGridPromptTitle", "composeGridPromptHelp",
+      "composeGridPromptEmpty", "composeGridPromptPersonUpload", "composeGridPromptNoPerson"]) {
+      assert.ok(i18n.t(key), `Missing ${key} in ${locale}`);
+    }
+    assert.match(i18n.t("composeGridPromptPair", 1, 1, 1, "POSE-X", "Stand",
+      "OUTFIT-Y", "Spring"), /POSE-X/);
+  }
+  i18n.setLocale("zh-CN");
+});
+
 test("footer credits the original creator and maintainer in all three languages", () => {
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
-  assert.match(html, /id="footer-note">ai-reference-gallery · 图片与原始数据版权归原作者ギア所有 · 该版本由 vculjp 整理维护/);
+  assert.match(html, /id="footer-note">ai-reference-gallery · 姿势／服装素材来源：ギア；脸部素材来源：あぎ · vculjp 整理维护/);
   assert.ok(!html.includes('id="source-link"'));
   for (const locale of ["zh-CN", "en", "ja"]) {
     i18n.setLocale(locale);
     const notice = i18n.t("footer");
-    for (const token of ["ai-reference-gallery", "ギア", "vculjp"]) {
+    for (const token of ["ai-reference-gallery", "ギア", "あぎ", "vculjp"]) {
       assert.ok(notice.includes(token), `${locale} footer missing ${token}`);
     }
   }
@@ -181,7 +253,7 @@ test("runtime modules load once, in dependency order, with composition CSS isola
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
   const scripts = [...html.matchAll(/<script src="([^"]+)" defer><\/script>/g)].map((m) => m[1]);
   assert.deepEqual(scripts, [
-    "catalog.js", "costume-catalog.js", "i18n.js",
+    "catalog.js", "costume-catalog.js", "portrait-catalog.js", "i18n.js",
     "composition.js", "composition-ui.js", "app.js"
   ]);
   const galleryCSS = fs.readFileSync(path.join(root, "style.css"), "utf8");

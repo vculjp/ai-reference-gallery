@@ -13,7 +13,7 @@ window.ReferenceComposition = (() => {
       const relative = (file.webkitRelativePath || file.name).replaceAll("\\", "/");
       const offset = relative.indexOf("img/");
       if (offset >= 0) selected.set(relative.slice(offset), file);
-      else if (/^(pose|costume)\//.test(relative)) selected.set("img/" + relative, file);
+      else if (/^(pose|costume|portrait)\//.test(relative)) selected.set("img/" + relative, file);
     }
     pickedFiles = selected;
     directory = null;
@@ -58,7 +58,7 @@ window.ReferenceComposition = (() => {
   async function checkLocalAccess(entries) {
     if (location.protocol !== "file:") return true;
     for (const entry of entries) {
-      if (entry && !entry.uploadUrl) await fileFor(entry.original);
+      if (entry && !entry.uploadUrl && !/^https:\/\//.test(entry.original)) await fileFor(entry.original);
     }
     return true;
   }
@@ -68,7 +68,8 @@ window.ReferenceComposition = (() => {
       const img = new Image();
       // Same-origin static assets work without configuration; external asset
       // hosts must allow CORS for Canvas to export a non-tainted PNG.
-      if (/^https?:$/.test(location.protocol) && !src.startsWith("blob:")) {
+      if ((!src.startsWith("blob:") && /^https?:$/.test(location.protocol)) ||
+          /^https:\/\//.test(src)) {
         img.crossOrigin = "anonymous";
       }
       img.onload = () => resolve(img);
@@ -87,7 +88,8 @@ window.ReferenceComposition = (() => {
     // available. In file:// mode, keep preview possible without authorization.
     const highResolution = original || location.protocol !== "file:" || !needsFolder();
     const path = sourceFor(entry, highResolution);
-    if (!highResolution || entry.uploadUrl || location.protocol !== "file:") {
+    if (!highResolution || entry.uploadUrl || location.protocol !== "file:" ||
+        /^https:\/\//.test(path)) {
       return { image: await loadImage(path) };
     }
     const blob = await fileFor(path);
@@ -155,7 +157,7 @@ window.ReferenceComposition = (() => {
     return [w, h];
   }
 
-  function paintGrid(canvas, options, images, original) {
+  function paintGrid(canvas, options, images, original, personImage = null) {
     const count = options.mode === "nine" ? 9 : 4;
     const columns = count === 9 ? 3 : 2;
     if (images.length !== count) throw new Error("COMPOSITION_INCOMPLETE");
@@ -164,16 +166,30 @@ window.ReferenceComposition = (() => {
     const ctx = canvas.getContext("2d");
     const margin = Math.round(edge * .016);
     const gap = Math.round(edge * .009);
-    const cell = (edge - margin * 2 - gap * (columns - 1)) / columns;
+    const headerH = personImage ? Math.round(edge * .21) : 0;
+    const cell = (edge - headerH - margin * 2 - gap * (columns - 1)) / columns;
     const innerPad = Math.max(5, Math.round(edge * .005));
     const pairGap = Math.max(3, Math.round(cell * .012));
     const panelWidth = (cell - innerPad * 2 - pairGap) / 2;
     const labelH = options.labels ? Math.round(cell * .075) : 0;
     ctx.fillStyle = options.background === "soft" ? "#f2f3f6" : "#ffffff";
     ctx.fillRect(0, 0, edge, edge);
+    if (personImage) {
+      const top = margin, portraitSize = headerH - margin * 2;
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(margin, top, edge - 2 * margin, headerH - margin);
+      contain(ctx, personImage, margin + 7, top + 5, portraitSize * .75, portraitSize);
+      ctx.fillStyle = "#333d4e";
+      ctx.font = `650 ${Math.round(edge * .026)}px system-ui, sans-serif`;
+      ctx.fillText("PERSON REFERENCE", margin + portraitSize + 22, top + portraitSize * .5);
+      if (options.labels && options.person?.id && !options.person.uploadUrl) {
+        ctx.font = `500 ${Math.round(edge * .018)}px system-ui, sans-serif`;
+        ctx.fillText(options.person.id, margin + portraitSize + 22, top + portraitSize * .8);
+      }
+    }
     images.forEach(({pose, outfit}, index) => {
       const x = margin + (index % columns) * (cell + gap);
-      const y = margin + Math.floor(index / columns) * (cell + gap);
+      const y = headerH + margin + Math.floor(index / columns) * (cell + gap);
       ctx.fillStyle = options.background === "soft" ? "#fff" : "#f7f8fa";
       ctx.fillRect(x, y, cell, cell);
       const pair = options.items[index];
@@ -223,11 +239,13 @@ window.ReferenceComposition = (() => {
         throw new Error("COMPOSITION_INCOMPLETE");
       }
       const entries = options.items.flatMap(({pose, outfit}) => [pose, outfit]);
+      if (options.person) entries.push(options.person);
       return withImages(entries, original, (images) => {
         const pairs = options.items.map((_, i) => ({
           pose: images[2 * i], outfit: images[2 * i + 1]
         }));
-        return paintGrid(canvas, options, pairs, original);
+        return paintGrid(canvas, options, pairs, original,
+          options.person ? images.at(-1) : null);
       });
     }
     if (!options.pose || !options.second) throw new Error("COMPOSITION_INCOMPLETE");

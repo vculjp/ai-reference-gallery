@@ -57,6 +57,7 @@
       <nav class="type-tabs" aria-label="素材类型" id="type-tabs">
         <button id="type-pose" class="active" type="button" aria-pressed="true">姿势素材</button>
         <button id="type-costume" type="button" aria-pressed="false">服装素材</button>
+        <button id="type-portrait" type="button" aria-pressed="false">脸部素材</button>
         <button id="type-compose" type="button" aria-pressed="false">组合制作</button>
       </nav>
     </div>
@@ -110,6 +111,12 @@
         <label><span id="compose-random-pose-filter-label">姿势分类</span>
           <select id="compose-random-pose-filter"><option value="">全部单人姿势</option></select>
         </label>
+        <label><span id="compose-random-portrait-section-label">脸部类型</span>
+          <select id="compose-random-portrait-section"><option value="face">Face · 正面脸部</option></select>
+        </label>
+        <label><span id="compose-random-portrait-hair-label">发型筛选</span>
+          <select id="compose-random-portrait-hair"><option value="">全部发型</option></select>
+        </label>
         <label class="compose-random-duo-option">
           <input type="checkbox" id="compose-random-include-duo">
           <span id="compose-random-duo-label">包含双人姿势</span>
@@ -131,14 +138,27 @@
             <h3 id="compose-grid-heading">随机姿势 × 服饰搭配</h3>
             <p id="compose-grid-hint">每格左边是姿势、右边是服饰；点击任意格同时更换这一组搭配。</p>
           </div>
-          <button id="compose-grid-shuffle" class="compose-random-primary" type="button">重新随机全部</button>
         </div>
         <div class="compose-grid-body">
-          <div>
+          <div class="compose-grid-gallery">
             <div id="compose-grid-tiles" class="compose-grid-tiles" aria-label="随机姿势服饰搭配"></div>
             <p class="compose-grid-status" id="compose-grid-status" role="status"></p>
           </div>
-          <div class="compose-grid-sidebar">
+          <section class="compose-grid-face-card" aria-labelledby="compose-grid-face-title">
+            <h3 id="compose-grid-face-title">人物参考</h3>
+            <div class="compose-grid-face-content">
+              <label class="compose-checkbox"><input id="compose-grid-use-person" type="checkbox"><span id="compose-grid-person-label">统一人物参考（可选）</span></label>
+              <div id="compose-grid-person-preview" class="compose-grid-person-preview" hidden></div>
+              <p id="compose-grid-person-current" class="compose-grid-status"></p>
+              <div class="compose-grid-face-actions">
+                <button id="compose-grid-choose-person" class="compose-secondary" type="button">从脸库选择人物</button>
+                <button id="compose-grid-random-person" class="compose-secondary" type="button">随机人物</button>
+                <button id="compose-grid-upload-person" class="compose-secondary" type="button">上传本地照片</button>
+              </div>
+              <input id="compose-grid-person-input" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+            </div>
+          </section>
+          <section class="compose-grid-sidebar" aria-labelledby="compose-grid-settings-title">
             <h3 id="compose-grid-settings-title">宫格设置</h3>
             <div class="compose-grid-options">
               <label><span id="compose-grid-bg-label">背景</span>
@@ -146,13 +166,23 @@
               </label>
               <label class="compose-checkbox"><input id="compose-grid-labels" type="checkbox" checked><span id="compose-grid-labels-label">显示图片编号</span></label>
             </div>
+            <button id="compose-grid-shuffle" class="compose-random-primary" type="button">重新随机全部</button>
+            <details class="compose-prompt-box compose-grid-prompt-box" id="compose-grid-prompt-box" open>
+              <summary id="compose-grid-prompt-title">AI 创作提示词</summary>
+              <p id="compose-grid-prompt-help">按宫格位置逐组说明姿势、服装与人物参考，复制后可交给支持参考图的 AI 工具。</p>
+              <textarea id="compose-grid-prompt-text" rows="6" readonly aria-label="宫格 AI 创作提示词"></textarea>
+              <div class="compose-prompt-actions">
+                <button id="compose-grid-copy-prompt" type="button" class="compose-secondary" disabled>复制提示词</button>
+                <p id="compose-grid-prompt-status" class="compose-top-status" aria-live="polite"></p>
+              </div>
+            </details>
             <p class="compose-grid-export-hint" id="compose-grid-export-hint">仅在预览时生成完整宫格；导出为高清方形 PNG。</p>
             <div class="compose-grid-actions">
               <button type="button" id="compose-grid-preview" class="compose-preview-button" disabled>大图预览</button>
               <button type="button" id="compose-grid-copy" class="compose-secondary" disabled>复制宫格</button>
               <button type="button" id="compose-grid-download" disabled>下载 PNG</button>
             </div>
-          </div>
+          </section>
         </div>
       </div>
       <div class="compose-workbench" id="compose-workbench">
@@ -200,6 +230,8 @@
             <p id="compose-person-help">上传人物照片，帮助 AI 参考面部和人物特征；图片只在本地处理。</p>
           </div>
           <div class="compose-person-actions">
+            <button type="button" class="compose-choose" id="compose-choose-person">从脸库选择</button>
+            <button type="button" class="compose-secondary" id="compose-random-person">随机人物</button>
             <button type="button" class="compose-choose" id="compose-upload-person">上传人物照片</button>
             <button type="button" class="compose-secondary" id="compose-remove-person" hidden>移除</button>
           </div>
@@ -247,7 +279,7 @@
   </div>
   <footer>
     <div class="footer-content">
-      <p id="footer-note">ai-reference-gallery · 图片与原始数据版权归原作者ギア所有 · 该版本由 vculjp 整理维护</p>
+      <p id="footer-note">ai-reference-gallery · 姿势／服装素材来源：ギア；脸部素材来源：あぎ · vculjp 整理维护</p>
       <nav class="footer-social-links" id="footer-social-nav" aria-label="社交与项目链接">
         <a href="https://github.com/vculjp/ai-reference-gallery" rel="noopener noreferrer" target="_blank">GitHub · ai-reference-gallery</a>
         <a href="https://x.com/vculjp" rel="noopener noreferrer" target="_blank">X · @vculjp</a>
@@ -274,6 +306,7 @@
   </div>
   <script src="catalog.js" defer></script>
   <script src="costume-catalog.js" defer></script>
+  <script src="portrait-catalog.js" defer></script>
   <script src="i18n.js" defer></script>
   <script src="composition.js" defer></script>
   <script src="composition-ui.js" defer></script>

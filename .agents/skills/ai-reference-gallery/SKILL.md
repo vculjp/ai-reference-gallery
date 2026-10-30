@@ -1,11 +1,11 @@
 ---
 name: ai-reference-gallery
-description: Standalone pose and outfit reference Skill. Supports natural-language Chinese/English selection, local style exclusions, image download caching, 2/3-image boards, single-image and paired 4/9-panel grids. No full gallery download or API key required.
+description: Standalone pose, outfit and face reference Skill. Supports catalog face selection, natural-language Chinese/English selection, local style exclusions, image caching, 2/3-image boards, single-image and paired 4/9-panel grids. No full gallery download or API key required.
 ---
 
 # AI Reference Gallery
 
-**Standalone after installation.** The skill directory includes a small compressed catalog and the website's Canvas compositor. It runs from ANY working directory, including `E:\codex` or a project unrelated to this repository. It fetches only the requested original images over HTTPS and caches them for later use. **Never require cloning the full image gallery, copying `catalog.js`, or running commands from the repository root.** Do not claim to generate finished AI artwork or call a diffusion model.
+**Standalone after installation.** The skill contains a versioned Catalog v1 manifest (`data/catalog-v1.json.gz`) plus compressed Canvas/i18n runtime (`data/runtime.json.gz`); it runs from ANY working directory, including `E:\codex` or an unrelated project. Only selected original images are fetched over HTTPS and cached for later use. **Never require cloning the full gallery or copying `catalog.js`.** This tool composes reference boards, not finished AI artwork.
 
 ## Workflow
 
@@ -22,8 +22,12 @@ description: Standalone pose and outfit reference Skill. Supports natural-langua
 # On a Windows global Codex install, see the PowerShell example below.
 # Explore available categories or catalog records (JSON output).
 node scripts/gallery.cjs categories --type pose
+node scripts/gallery.cjs catalog --type outfit --category spring --limit 10
+node scripts/gallery.cjs catalog --format manifest
 node scripts/gallery.cjs search --type pose --query "站姿" --limit 8
 node scripts/gallery.cjs search --type outfit --category spring --query "white"
+node scripts/gallery.cjs search --type portrait --category short --limit 10
+node scripts/gallery.cjs catalog --type portrait --id f71f980dde3
 node scripts/gallery.cjs doctor
 node scripts/gallery.cjs search --type outfit --describe "春季穿搭不要性感风格" --limit 8
 
@@ -32,6 +36,10 @@ node scripts/gallery.cjs compose --pose-category 站姿 --outfit-category spring
 
 # Explicit pose and clothing image; optional third, user-owned person photo.
 node scripts/gallery.cjs compose --pose-id full_sexy_P001_front --outfit-id SPR-0001 --person "C:/Photos/person.png" --out output/my-reference.png
+
+# Select a real face from the portrait catalog instead of uploading a local photo.
+node scripts/gallery.cjs compose --pose-id full_sexy_P001_front --outfit-id SPR-0001 --portrait-id f71f980dde3 --out output/face-reference.png
+node scripts/gallery.cjs grid --size 4 --portrait-hair long --portrait-section face --out output/one-character-grid.png
 
 # Custom outfit photo in slot two, without a catalog outfit.
 node scripts/gallery.cjs compose --pose-id full_sexy_P001_front --outfit-image "C:/Photos/outfit.webp" --background soft --labels false --out output/custom.png
@@ -68,6 +76,8 @@ Every individual reference board uses **fixed left-to-right** order: pose → ou
 `--lang zh-CN|en|ja` controls catalog labels and prompts. Random selection defaults to single-person poses; use `--include-duo` for two-person poses. `compose --count` ranges from 1 to 20; `grid` uses `--size 4|9`. Explicit `--pose-id` / `--outfit-id` locks an asset across cells. Otherwise grid outputs enforce distinct references. `--describe` uses local catalog rules, NOT AI image recognition; unsupported style terms are reported. Existing files are never overwritten without `--overwrite`.
 
 PNG generation requires **Node.js 22+ and installed Chrome or Edge**. Set `CHROME_PATH` if auto-detection fails. No npm packages or remote API keys are required. Original downloads go into `~/.cache/ai-reference-gallery/img/` (override with `AI_REFERENCE_CACHE_DIR`); cached files get SHA-256 sidecars and are re-fetched if changed or corrupted. Downloader prints progress to stderr while keeping JSON output on stdout. `AI_REFERENCE_ASSET_BASE` can point to a trusted HTTPS static mirror. `doctor`, `search` and `categories` work without image downloads.
+
+Faces come from [AI Portrait Gallery](https://ai-portrait-gallery.pages.dev/) by あぎ. Use `--portrait-id`, or `--portrait-hair short|medium|semi-long|long` with `--portrait-section face|styling` and `--portrait-query`. One selected face is shared across a batch or paired grid. `--person FILE` and catalog-face options are mutually exclusive. Original faces are downloaded and cached only when selected.
 
 See [usage and troubleshooting](references/usage.md) for search semantics and error recovery.
 
