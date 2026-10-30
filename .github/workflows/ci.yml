@@ -50,7 +50,7 @@ jobs:
       - name: Distribution and Catalog API tests
         run: npm test
       - name: Skill logic tests (no image downloads)
-        run: node --test --test-name-pattern="catalog lookup|random composition|natural-language selection|single-image grid rejects|search CLI|four- and nine-panel prompts|grid CLI rejects" scripts/test-skill.cjs
+        run: node --test --test-name-pattern="catalog lookup|random composition|natural-language selection|single-image grid rejects|uploaded person photo|search CLI|four- and nine-panel prompts|grid CLI rejects" scripts/test-skill.cjs
       - name: Website JavaScript syntax
         run: |
           node --check app.js

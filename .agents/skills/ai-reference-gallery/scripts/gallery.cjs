@@ -298,7 +298,10 @@ async function compose(data, flags) {
   if (occupied.length && !flags.overwrite) {
     throw new Error(`Output already exists: ${occupied[0]}. Use --overwrite or choose another path.`);
   }
-  const person = localImage(flags.person, "Person photo") || selectPortrait(data, flags);
+  // Validate mutually exclusive person sources even when --person is present.
+  // Short-circuiting selectPortrait() used to silently ignore --portrait-*.
+  const catalogPerson = selectPortrait(data, flags);
+  const person = localImage(flags.person, "Person photo") || catalogPerson;
   const outfitFile = localImage(flags["outfit-image"], "Outfit image");
   const uploads = { ...(person?.filename ? { person: person.filename } : {}),
     ...(outfitFile ? { outfit: outfitFile.filename } : {}) };
@@ -366,7 +369,8 @@ async function grid(data, flags) {
   if (occupied && !flags.overwrite) {
     throw new Error(`Output already exists: ${occupied}. Use --overwrite or choose another path.`);
   }
-  const person = localImage(flags.person, "Person photo") || selectPortrait(data, flags);
+  const catalogPerson = selectPortrait(data, flags);
+  const person = localImage(flags.person, "Person photo") || catalogPerson;
   const outfitFile = localImage(flags["outfit-image"], "Outfit image");
   const uploads = { ...(person?.filename ? { person: person.filename } : {}),
     ...(outfitFile ? { outfit: outfitFile.filename } : {}) };
@@ -422,9 +426,17 @@ async function gridSingles(data, flags, count) {
     column: i % Math.sqrt(count) + 1, id: item.id,
     category: data.i18n.label(item, "category"), type
   }));
-  const intro = type === "pose" ? "姿势" : "服装";
-  const prompt = `这是一张${count}格${intro}素材对比图，每格是一张独立参考图片，依照从左到右、从上到下的格子编号选择需要的素材。\n\n` +
-    panels.map((panel) => `第${panel.cell}格：${panel.id}（${panel.category}）`).join("\n");
+  const language = data.i18n.locale;
+  const intro = {
+    "zh-CN": `这是一张${count}格${type === "pose" ? "姿势" : "服装"}素材对比图，每格是一张独立参考图片，依照从左到右、从上到下的格子编号选择需要的素材。`,
+    en: `This is a ${count}-panel ${type === "pose" ? "pose" : "outfit"} reference sheet. Each panel contains one independent image. Choose a reference by its position, reading left to right and top to bottom.`,
+    ja: `これは${count}コマの${type === "pose" ? "ポーズ" : "衣装"}参考シートです。各コマには独立した参考画像が1枚あります。左から右、上から下の順に素材を選んでください。`
+  }[language];
+  const panelText = (panel) => language === "en" ?
+    `Panel ${panel.cell}: ${panel.id} (${panel.category})` :
+    language === "ja" ? `${panel.cell}コマ目：${panel.id}（${panel.category}）` :
+      `第${panel.cell}格：${panel.id}（${panel.category}）`;
+  const prompt = intro + "\n\n" + panels.map(panelText).join("\n");
   const metadata = { grid: { size: count, columns: Math.sqrt(count), rows: Math.sqrt(count),
       mode: "single", source: type, aspect: flags.aspect || "square" },
     image: { width: result.width, height: result.height }, panels,

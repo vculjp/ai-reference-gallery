@@ -20,7 +20,7 @@ process.on("exit", () => fs.rmSync(testCache, { recursive: true, force: true }))
 
 function seedCache(pairs) {
   for (const pair of pairs) {
-    for (const entry of [pair.pose, pair.outfit]) {
+    for (const entry of [pair.pose, pair.outfit, pair.person]) {
       if (!entry) continue;
       const from = path.join(root, ...entry.original.split("/"));
       const to = path.join(testCache, ...entry.original.split("/"));
@@ -41,11 +41,16 @@ test("catalog lookup searches the actual 1,439 poses and 1,407 outfits", () => {
   const data = catalogs();
   assert.equal(data.poses.length, 1439);
   assert.equal(data.outfits.length, 1407);
+  assert.equal(data.portraits.length, 1499);
   assert.ok(findAssets(data, "pose", { query: "站姿" }).length > 0);
   assert.ok(findAssets(data, "outfit", { category: "春季", query: "white" }).length > 0);
+  assert.ok(findAssets(data, "portrait", { category: "short" }).length > 0);
   assert.ok(findAssets(data, "pose", { query: "impossible-keyword-123" }).length === 0);
   const japanese = catalogs("ja");
   assert.ok(findAssets(japanese, "pose", { query: "立ち" }).length > 0);
+  const portraits = command("search", "--type", "portrait", "--category", "short", "--limit", "3");
+  assert.equal(portraits.status, 0, portraits.stderr);
+  assert.equal(JSON.parse(portraits.stdout).items.length, 3);
 });
 
 test("random composition is reproducible and avoids duplicate pose groups", () => {
@@ -111,6 +116,17 @@ test("single-image grid rejects incompatible parameters and insufficient unique 
     "--grid-source", "pose");
   assert.notEqual(pairs.status, 0);
   assert.match(pairs.stderr, /--grid-source and --aspect require/);
+});
+
+test("uploaded person photo and catalog portrait cannot silently override each other", () => {
+  const person = path.join(root, "img/pose/solo-expressive/original/full_sexy_P001_front.png");
+  for (const cmd of ["compose", "grid"]) {
+    const args = cmd === "grid" ? ["grid", "--size", "4"] : ["compose"];
+    const result = command(...args, "--person", person,
+      "--portrait-id", "f71f980dde3");
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Use either --person FILE or portrait catalog selection/);
+  }
 });
 
 test("search CLI emits IDs and errors for nonexistent assets or bad options", () => {
@@ -250,6 +266,80 @@ test("standalone Skill exports a portrait four-grid of four distinct outfit imag
     } finally { fs.rmSync(dest, { recursive: true, force: true }); }
   });
 
+test("single-image grids write prompts in the selected language",
+  { skip: !browserExecutable() ? "Chrome/Edge is not installed" : false }, () => {
+    const selected = selectSingles(catalogs(), {
+      "grid-source": "pose", "pose-category": "站姿", seed: "localized-grid"
+    }, 4);
+    seedCache(selected.map((pose) => ({ pose })));
+    const dest = fs.mkdtempSync(path.join(os.tmpdir(), "ai-reference-grid-locales-"));
+    try {
+      for (const [language, expected] of [["en", /Panel 4:/],
+        ["ja", /4コマ目：/]]) {
+        const filename = path.join(dest, `single-${language}.png`);
+        const result = command("grid", "--size", "4", "--grid-mode", "single",
+          "--grid-source", "pose", "--pose-category", "站姿",
+          "--seed", "localized-grid", "--lang", language, "--out", filename);
+        assert.equal(result.status, 0, result.stderr);
+        const prompt = fs.readFileSync(filename.replace(/\.png$/, ".txt"), "utf8");
+        assert.match(prompt, expected);
+        assert.doesNotMatch(prompt, /第4格/);
+      }
+    } finally {
+      fs.rmSync(dest, { recursive: true, force: true });
+    }
+  });
+
+test("portrait catalog selection produces a real three-image board and matching metadata",
+  { skip: !browserExecutable() ? "Chrome/Edge is not installed" : false }, () => {
+    const data = catalogs();
+    const pose = data.poses.find((item) => item.id === "full_sexy_P001_front");
+    const outfit = data.outfits.find((item) => item.id === "SPR-0001");
+    const portrait = data.portraits.find((item) => item.id === "f71f980dde3");
+    assert.ok(portrait);
+    seedCache([{ pose, outfit, person: portrait }]);
+    const dest = fs.mkdtempSync(path.join(os.tmpdir(), "ai-reference-portrait-export-"));
+    try {
+      const filename = path.join(dest, "with-face.png");
+      const result = command("compose", "--pose-id", pose.id, "--outfit-id", outfit.id,
+        "--portrait-id", portrait.id, "--out", filename);
+      assert.equal(result.status, 0, result.stderr);
+      const info = JSON.parse(result.stdout);
+      assert.equal(info.files[0].person.id, portrait.id);
+      assert.deepEqual(info.files[0].order, ["pose", "outfit", "person"]);
+      assert.equal(fs.readFileSync(filename).subarray(0, 8).toString("hex"),
+        "89504e470d0a1a0a");
+      assert.match(fs.readFileSync(filename.replace(/\.png$/, ".txt"), "utf8"), /三图参考板/);
+    } finally {
+      fs.rmSync(dest, { recursive: true, force: true });
+    }
+  });
+
+test("catalog portrait is shared across every paired grid cell and recorded in PNG metadata",
+  { skip: !browserExecutable() ? "Chrome/Edge is not installed" : false }, () => {
+    const data = catalogs();
+    const pose = data.poses.find((item) => item.id === "full_sexy_P001_front");
+    const outfit = data.outfits.find((item) => item.id === "SPR-0001");
+    const portrait = data.portraits.find((item) => item.id === "f71f980dde3");
+    seedCache([{ pose, outfit, person: portrait }]);
+    const dest = fs.mkdtempSync(path.join(os.tmpdir(), "ai-reference-shared-portrait-"));
+    try {
+      const filename = path.join(dest, "face-grid.png");
+      const result = command("grid", "--size", "4", "--pose-id", pose.id,
+        "--outfit-id", outfit.id, "--portrait-id", portrait.id, "--out", filename);
+      assert.equal(result.status, 0, result.stderr);
+      const grid = JSON.parse(result.stdout);
+      assert.equal(grid.panels.length, 4);
+      assert.ok(grid.panels.every((panel) => panel.person?.id === portrait.id));
+      assert.deepEqual(grid.order, ["pose", "outfit", "person"]);
+      assert.equal(fs.readFileSync(filename).subarray(0, 8).toString("hex"),
+        "89504e470d0a1a0a");
+      assert.match(fs.readFileSync(filename.replace(/\.png$/, ".txt"), "utf8"), /人物照片/);
+    } finally {
+      fs.rmSync(dest, { recursive: true, force: true });
+    }
+  });
+
 test("standalone Skill exports a nine-grid with nine different pose images",
   { skip: !browserExecutable() ? "Chrome/Edge is not installed" : false }, () => {
     const selected = selectSingles(catalogs(), {
@@ -336,6 +426,7 @@ test("globally installed skill works outside the gallery and fetches ONLY select
     const records = catalogs();
     const pose = records.poses.find((x) => x.id === "full_sexy_P001_front");
     const outfit = records.outfits.find((x) => x.id === "SPR-0001");
+    const portrait = records.portraits.find((x) => x.id === "f71f980dde3");
     const allowed = new Set([pose.original, outfit.original]);
     const requests = [];
     const server = http.createServer((req, res) => {
@@ -367,6 +458,16 @@ test("globally installed skill works outside the gallery and fetches ONLY select
         .subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
       assert.equal(fs.existsSync(path.join(localCache, ...pose.original.split("/"))), true);
       assert.equal(fs.existsSync(path.join(localCache, ...outfit.original.split("/"))), true);
+      // A face from the newly added collection must be fetched on demand from
+      // the same installed skill, without downloading the remaining 1,498.
+      allowed.add(portrait.original);
+      const withPortrait = await runInstalled(["compose", "--pose-id", pose.id,
+        "--outfit-id", outfit.id, "--portrait-id", portrait.id,
+        "--out", "portrait-reference.png"], opts);
+      assert.equal(withPortrait.status, 0, withPortrait.stderr);
+      assert.equal(requests.length, 3, "Only the selected portrait should be fetched");
+      assert.equal(requests[2], portrait.original);
+      assert.equal(fs.existsSync(path.join(localCache, ...portrait.original.split("/"))), true);
       const saved = path.join(localCache, ...pose.original.split("/"));
       const corrupted = fs.readFileSync(saved);
       corrupted[corrupted.length - 20] ^= 1; // PNG signature remains valid
@@ -374,14 +475,14 @@ test("globally installed skill works outside the gallery and fetches ONLY select
       const repaired = await runInstalled(["compose", "--pose-id", pose.id,
         "--outfit-id", outfit.id, "--out", "repaired.png"], opts);
       assert.equal(repaired.status, 0, repaired.stderr);
-      assert.equal(requests.length, 3, "SHA-256 mismatch must redownload the damaged asset");
+      assert.equal(requests.length, 4, "SHA-256 mismatch must redownload the damaged asset");
       // Close the source server: the second export must work entirely from cache.
       await new Promise((resolve) => server.close(resolve));
       const next = await runInstalled(["grid", "--size", "4", "--pose-id", pose.id,
         "--outfit-id", outfit.id, "--out", "four-from-cache.png"], opts);
       assert.equal(next.status, 0, next.stderr);
       assert.equal(JSON.parse(next.stdout).grid.size, 4);
-      assert.equal(requests.length, 3);
+      assert.equal(requests.length, 4);
     } finally {
       server.closeAllConnections();
       if (server.listening) await new Promise((resolve) => server.close(resolve));

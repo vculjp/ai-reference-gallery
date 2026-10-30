@@ -22,10 +22,10 @@ The source catalog is included in the Skill (~87 KB compressed). On first export
 
 ## Search
 
-- `catalog --type pose|outfit --id ID --category NAME --query WORDS --offset 0 --limit 20` is the public, stable Catalog v1 JSON interface. `catalog --format manifest` exports all records as one JSON document without downloading photos. See [Catalog v1 documentation](https://github.com/vculjp/ai-reference-gallery/blob/main/docs/catalog-api.md) for the versioned data contract.
+- `catalog --type pose|outfit|portrait --id ID --category NAME --query WORDS --offset 0 --limit 20` is the public, stable Catalog v1 JSON interface. `catalog --format manifest` exports all records as one JSON document without downloading photos. See [Catalog v1 documentation](https://github.com/vculjp/ai-reference-gallery/blob/main/docs/catalog-api.md) for the versioned data contract.
 
-- `search --type pose|outfit --query "words" --category "value" --limit 10`
-- `categories --type pose|outfit`
+- `search --type pose|outfit|portrait --query "words" --category "value" --limit 10`
+- `categories --type pose|outfit|portrait`
 - `--lang zh-CN|en|ja` displays translated category and pose names where provided.
 - Search performs case-insensitive substring matching across the ID and original / localized catalog fields. Multiple whitespace-separated terms must **all** match. There is no embedding model or external semantic search API; translate vague descriptions to useful catalog keywords first.
 - `--describe "春季自然站姿，不要性感风格"` supports local rules for seasons, standing/sitting/squatting/lying poses, some angles/colors, natural/casual pose preference, and style exclusions. It can be used with `search`, `compose` or `grid`. JSON includes `selection.matched` and `selection.unsupported`. For example `日系` currently has no reliable visual classification and is reported as unsupported, not silently claimed as matched. This is an **interpretable filtering heuristic**, not visual understanding or an LLM.
