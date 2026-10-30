@@ -82,6 +82,42 @@ async function main() {
   assert.match(await evalJs("document.querySelector('#counts').textContent"), /5784/);
   assert.equal(await evalJs("getComputedStyle(document.body).backgroundColor"), "rgb(245, 245, 247)");
   assert.equal(await evalJs("document.querySelector('#tagline').textContent"), "灵感，从这里开始。");
+  const filterToolbarLayout = await evalJs(`(() => {
+    const result = {};
+    for (const tab of ['pose','depth','portrait','costume']) {
+      document.getElementById('type-' + tab).click();
+      const series = document.getElementById('series');
+      const summary = document.querySelector('.summary');
+      const a = series.getBoundingClientRect();
+      const b = summary.getBoundingClientRect();
+      result[tab] = {
+        seriesVisible: !series.hidden,
+        sameRow: series.hidden || Math.abs((a.top + a.height / 2) -
+          (b.top + b.height / 2)) < 2,
+        rowContainsBoth: series.parentElement === summary.parentElement
+      };
+    }
+    const select = document.getElementById('category');
+    const style = getComputedStyle(select);
+    result.arrow = {
+      appearance: style.appearance,
+      image: style.backgroundImage,
+      position: style.backgroundPosition,
+      paddingRight: style.paddingRight
+    };
+    return result;
+  })()`);
+  for (const tab of ['pose','depth','portrait','costume']) {
+    assert.equal(filterToolbarLayout[tab].rowContainsBoth, true,
+      tab + " series and result summary must share one toolbar");
+    assert.equal(filterToolbarLayout[tab].sameRow, true,
+      tab + " series and result summary must align on one desktop row");
+  }
+  assert.equal(filterToolbarLayout.arrow.appearance, "none",
+    "Filter dropdowns should use the gallery's inset custom chevron");
+  assert.match(filterToolbarLayout.arrow.image, /^url\(/);
+  assert.match(filterToolbarLayout.arrow.position, /20px/);
+  assert.equal(filterToolbarLayout.arrow.paddingRight, "44px");
   // Filter captions are visually removed across all tabs; labels remain
   // in the DOM for accessible names and the existing locale switching.
   const captionsHidden = await evalJs(`(() => {

@@ -78,10 +78,12 @@
       <label id="angle-filter"><span id="angle-label" class="filter-label-sr-only">角度</span><select id="angle"><option value="">全部角度</option></select></label>
       <label id="view-filter"><span id="view-label" class="filter-label-sr-only">展示</span><select id="view"><option id="view-pose" value="pose">按姿势组</option><option id="view-image" value="image">逐张图片</option></select></label>
     </section>
-    <nav id="series" class="series"></nav>
-    <div class="summary">
-      <span id="result" aria-live="polite">正在载入索引…</span>
-      <button id="reset" type="button">重置筛选</button>
+    <div class="series-summary-row">
+      <nav id="series" class="series"></nav>
+      <div class="summary">
+        <span id="result" aria-live="polite">正在载入索引…</span>
+        <button id="reset" type="button">重置筛选</button>
+      </div>
     </div>
     <section id="grid" class="grid" aria-label="素材列表"></section>
     <div class="load-more-wrap"><button id="load-more" type="button" hidden>加载更多</button></div>

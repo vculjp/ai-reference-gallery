@@ -289,8 +289,17 @@ input:focus, select:focus {
   border-color: var(--focus);
   box-shadow: 0 0 0 3px rgb(0 113 227 / 10%);
 }
+.series-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-width: 0;
+  margin: 20px 0 17px;
+}
 .series, .angles { display: flex; flex-wrap: wrap; gap: 8px; }
-.series { margin: 20px 0 0; }
+.series { flex: 1 1 auto; min-width: 0; }
+.series[hidden] { display: none; }
 .series button, .angles button {
   padding: 8px 16px;
   border: 1px solid #e6e6ea;
@@ -312,7 +321,8 @@ input:focus, select:focus {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin: 31px 0 17px;
+  flex: 0 0 auto;
+  margin: 0;
   color: var(--secondary);
   font-size: 12px;
 }
@@ -610,9 +620,10 @@ footer a:hover { text-decoration: underline; }
   .filters label { font-size: 11px; }
   input, select { height: 44px; padding-inline: 10px; font-size: 12px; }
   input[type="search"] { padding-left: 41px; }
-  .series { gap: 7px; margin-top: 16px; }
+  .series-summary-row { flex-wrap: wrap; gap: 12px; margin: 16px 0 17px; }
+  .series { flex: 1 1 100%; gap: 7px; }
   .series button { padding: 7px 12px; font-size: 11px; }
-  .summary { margin-top: 24px; }
+  .summary { flex: 1 1 100%; }
   .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
   .card { padding: 6px; border-radius: 17px; }
   .cover { border-radius: 12px; }
@@ -641,6 +652,17 @@ footer a:hover { text-decoration: underline; }
   .language-switch button { padding-inline: 7px; }
   .filters { gap: 9px; }
   .card-info { padding-inline: 4px; }
+}
+/* Use a consistent inset chevron instead of the browser's edge-hugging
+   native select arrow. Keep extra right padding so text never touches it. */
+.filters select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 44px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235b6472' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 20px center;
+  background-size: 14px 14px;
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
