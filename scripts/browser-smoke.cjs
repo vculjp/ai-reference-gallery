@@ -88,13 +88,21 @@ async function main() {
       document.getElementById('type-' + tab).click();
       const series = document.getElementById('series');
       const summary = document.querySelector('.summary');
+      const filters = document.querySelector('.filters');
+      const toolbar = document.querySelector('.browser-toolbar');
       const a = series.getBoundingClientRect();
       const b = summary.getBoundingClientRect();
+      const f = filters.getBoundingClientRect();
+      const t = toolbar.getBoundingClientRect();
       result[tab] = {
         seriesVisible: !series.hidden,
         sameRow: series.hidden || Math.abs((a.top + a.height / 2) -
           (b.top + b.height / 2)) < 2,
-        rowContainsBoth: series.parentElement === summary.parentElement
+        rowContainsBoth: series.parentElement === summary.parentElement,
+        sideBySide: f.right + 8 < b.left && f.right + 8 < a.left + (series.hidden ? 10000 : 0) &&
+          f.left >= t.left - 2 && b.right <= t.right + 2,
+        controlFits: [...filters.querySelectorAll('input,select')].every(el =>
+          el.getBoundingClientRect().right <= f.right - 5)
       };
     }
     const select = document.getElementById('category');
@@ -112,6 +120,10 @@ async function main() {
       tab + " series and result summary must share one toolbar");
     assert.equal(filterToolbarLayout[tab].sameRow, true,
       tab + " series and result summary must align on one desktop row");
+    assert.equal(filterToolbarLayout[tab].sideBySide, true,
+      tab + " filters and series/results should sit side-by-side in one toolbar");
+    assert.equal(filterToolbarLayout[tab].controlFits, true,
+      tab + " filter controls must fit inside the compact toolbar");
   }
   assert.equal(filterToolbarLayout.arrow.appearance, "none",
     "Filter dropdowns should use the gallery's inset custom chevron");
