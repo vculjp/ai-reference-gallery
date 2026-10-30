@@ -133,6 +133,35 @@ async function main() {
       document.querySelector("#grid .card").click();
       get("add-to-compose").click();
       if (get("compose-open-preview").disabled) throw Error("Composition incomplete");
+      const refOutfit = get("compose-costume-id").textContent;
+      get("compose-lock-pose").click();
+      if (get("compose-random-pose").disabled !== true ||
+          get("compose-lock-pose").getAttribute("aria-pressed")!=="true")
+        throw Error("Reference pose lock did not disable its controls");
+      get("compose-random-pair").click();
+      if (get("compose-pose-id").textContent!==depthID)
+        throw Error("Locked reference pose changed during pair shuffle");
+      get("compose-reference-undo").click();
+      if (get("compose-costume-id").textContent!==refOutfit)
+        throw Error("Reference undo failed to restore outfit");
+      get("compose-lock-pose").click();
+      const uploadPoseCanvas=document.createElement("canvas");
+      uploadPoseCanvas.width=uploadPoseCanvas.height=32;
+      uploadPoseCanvas.getContext("2d").fillRect(0,0,32,32);
+      const uploadPoseBlob=await new Promise(resolve=>uploadPoseCanvas.toBlob(resolve,"image/png"));
+      const poseTransfer=new DataTransfer();
+      poseTransfer.items.add(new File([uploadPoseBlob],"reference-personal-pose.png",{type:"image/png"}));
+      get("compose-pose-input").files=poseTransfer.files;
+      get("compose-pose-input").dispatchEvent(new Event("change",{bubbles:true}));
+      for (let n=0;n<50 && get("compose-pose-id").textContent!=="reference-personal-pose.png";n++) await wait(100);
+      if (get("compose-pose-id").textContent!=="reference-personal-pose.png" ||
+          !get("compose-pose-preview").querySelector("img").src.startsWith("blob:"))
+        throw Error("Reference custom pose upload did not update composition");
+      if (get("compose-prompt-text").value.includes("ControlNet"))
+        throw Error("Uploaded reference pose incorrectly requires depth conditioning");
+      get("compose-reference-undo").click();
+      if (get("compose-pose-id").textContent!==depthID)
+        throw Error("Reference undo did not restore original Depth");
       if (/ControlNet|原始 Depth PNG/.test(get("compose-prompt-text").value))
         throw Error("Default reference prompt incorrectly requires professional Depth conditioning");
       get("compose-prompt-mode").value = "professional";
@@ -150,10 +179,13 @@ async function main() {
       get("compose-mode-four").click();
       const originalClick = HTMLAnchorElement.prototype.click;
       window.__panelArchives = [];
+      window.__singleDownloads = [];
       HTMLAnchorElement.prototype.click = function() {
         if (this.download?.endsWith(".zip")) {
           const name = this.download;
           window.__panelArchives.push({name, ready:fetch(this.href).then(r=>r.blob())});
+        } else if (this.download?.endsWith("_reference.png")) {
+          window.__singleDownloads.push({name:this.download, ready:fetch(this.href).then(r=>r.blob())});
         } else originalClick.call(this);
       };
       const readZip = async (blob) => {
@@ -218,14 +250,93 @@ async function main() {
         throw Error("Professional ZIP lacks four Depth files");
       const cell = document.querySelector("#compose-grid-tiles .compose-grid-tile");
       if (!cell || !cell.querySelector("img").src.includes("/img/depth/thumbs/")) throw Error("Depth grid not active");
+      const tiles = () => [...document.querySelectorAll("#compose-grid-tiles .compose-grid-tile")];
+      const images = (index) => [...tiles()[index].querySelectorAll("img")].map(img => img.alt);
+      if (tiles().length!==4 || tiles().some(tile =>
+        tile.querySelectorAll(".compose-grid-image-column").length!==2 ||
+        tile.querySelectorAll(".compose-grid-pill").length!==6 ||
+        tile.querySelectorAll(".compose-grid-lock").length!==2 ||
+        !tile.querySelector(".compose-grid-detail-link")))
+        throw Error("Missing independent pose/outfit controls, locks or single-board tools");
+      const beforeEdit = images(0);
+      const untouched = images(1);
+      tiles()[0].querySelectorAll(".compose-grid-pill")[1].click();
+      if (images(0)[0]===beforeEdit[0] || images(0)[1]!==beforeEdit[1] ||
+          images(1).some((x,i)=>x!==untouched[i]))
+        throw Error("Individual pose randomization altered another image");
+      get("compose-grid-undo").click();
+      if (images(0).some((x,i)=>x!==beforeEdit[i]))
+        throw Error("Undo did not restore previous pose");
+      const locks = tiles()[0].querySelectorAll(".compose-grid-lock");
+      locks[0].click();
+      const lockedPose = images(0)[0];
+      tiles()[0].querySelector(".compose-grid-reroll-pair").click();
+      if (images(0)[0]!==lockedPose || images(0)[1]===beforeEdit[1])
+        throw Error("Pose lock failed to preserve pose during pair reroll");
+      get("compose-grid-undo").click();
+      if (images(0)[1]!==beforeEdit[1] ||
+          tiles()[0].querySelector(".compose-grid-lock").getAttribute("aria-pressed")!=="true")
+        throw Error("Undo of pair reroll failed");
+      tiles()[0].querySelector(".compose-grid-lock").click();
+      tiles()[0].querySelectorAll(".compose-grid-pill")[0].click();
+      if (get("compose-grid-dialog").hidden) throw Error("Catalog chooser did not open");
+      get("compose-grid-dialog-search").value="full_single_P020_front";
+      get("compose-grid-dialog-search").dispatchEvent(new Event("input",{bubbles:true}));
+      const candidate=document.querySelector("#compose-grid-dialog-items .compose-grid-picker-item:not(:disabled)");
+      if (!candidate) throw Error("Catalog search has no selectable candidate");
+      const selected=candidate.querySelector("span").textContent;
+      candidate.click();
+      if (images(0)[0]!==selected || images(0)[1]!==beforeEdit[1] ||
+          !get("compose-grid-dialog").hidden)
+        throw Error("Catalog selection changed unrelated outfit or did not close");
+      const canvasUpload=document.createElement("canvas");
+      canvasUpload.width=canvasUpload.height=30;
+      canvasUpload.getContext("2d").fillRect(0,0,30,30);
+      const fileBlob=await new Promise(resolve=>canvasUpload.toBlob(resolve,"image/png"));
+      const custom=new File([fileBlob],"personal-outfit.png",{type:"image/png"});
+      const uploadButton=tiles()[0].querySelectorAll(".compose-grid-pill")[5];
+      uploadButton.click();
+      const transferUpload=new DataTransfer();
+      transferUpload.items.add(custom);
+      get("compose-grid-image-input").files=transferUpload.files;
+      get("compose-grid-image-input").dispatchEvent(new Event("change",{bubbles:true}));
+      for(let i=0;i<40 && images(0)[1]!=="personal-outfit.png";i++) await wait(100);
+      if (images(0)[1]!=="personal-outfit.png" ||
+          !get("compose-grid-prompt-text").value.includes("personal-outfit.png"))
+        throw Error("Custom outfit upload did not change only this cell and prompt");
+      const uploadedZip=await exportZip(9);
+      if (!uploadedZip.entries.some(x=>x.name==="01_reference.png"))
+        throw Error("Custom upload broke professional grid export");
+      tiles()[0].querySelector(".compose-grid-detail-link").click();
+      for(let i=0;i<60 && !get("compose-grid-single-canvas").width;i++) await wait(100);
+      if (get("compose-grid-single-dialog").hidden ||
+          !get("compose-grid-single-prompt").value.includes("personal-outfit.png") ||
+          get("compose-grid-single-canvas").width<100)
+        throw Error("Independent prompt or preview missing uploaded selection");
+      get("compose-grid-single-download").click();
+      for(let i=0;i<80 && !window.__singleDownloads.length;i++) await wait(100);
+      if (!window.__singleDownloads.length ||
+          window.__singleDownloads.at(-1).name!=="01_reference.png" ||
+          (await window.__singleDownloads.at(-1).ready).size<1000)
+        throw Error("Single-cell HD PNG download failed");
+      get("compose-grid-single-close").click();
+      if (!get("compose-grid-single-dialog").hidden) throw Error("Single preview did not close");
       get("compose-mode-nine").click();
       if (document.querySelectorAll("#compose-grid-tiles .compose-grid-tile").length !== 9)
         throw Error("Nine-grid missing cells");
+      if (tiles().some(tile =>
+        tile.querySelectorAll(".compose-grid-pill").length!==6 ||
+        tile.querySelectorAll(".compose-grid-lock").length!==2 ||
+        !tile.querySelector(".compose-grid-detail-link")))
+        throw Error("Nine-grid missing independent edit/lock/prompt controls");
       get("compose-grid-prompt-mode").value = "normal";
       get("compose-grid-prompt-mode").dispatchEvent(new Event("change", {bubbles:true}));
       const nineZip = await exportZip(10);
       if (!nineZip.entries.some(x=>x.name==="09_reference.png"))
         throw Error("Nine-grid individual export missing ninth reference");
+      if (tiles().length!==9 || tiles().some(tile =>
+        tile.querySelectorAll(".compose-grid-pill").length!==6))
+        throw Error("Nine-grid is missing per-image controls");
       if (!document.querySelector("#compose-grid-tiles .compose-grid-tile img").src.includes("/img/depth/thumbs/"))
         throw Error("Nine-grid depth not shared");
       get("compose-grid-use-depth").click();

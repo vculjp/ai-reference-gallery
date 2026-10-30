@@ -6,6 +6,9 @@ body:has(#compose-panel:not([hidden])) main { padding-top: 18px; }
 body:has(#compose-panel:not([hidden])) .collection-heading { margin-bottom: 12px; }
 body:has(#compose-panel:not([hidden])) .collection-heading h2 { font-size: 25px; }
 .compose-panel { display: grid; gap: 10px; }
+.compose-reference-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:12px; padding:8px 0; color:var(--secondary); font-size:12px; }
+.compose-reference-toolbar button,.compose-reference-lock { border-radius:999px; }
+.compose-reference-lock[aria-pressed="true"] { background:#1d1d1f; color:#fff; }
 .compose-mode-tabs { display:flex; flex-wrap:wrap; gap:6px; width:fit-content; max-width:100%; padding:5px; border-radius:14px; background:#e9edf5; }
 .compose-mode-tabs button { padding:10px 18px; border:0; border-radius:10px; background:transparent; color:#566275; font-size:13px; font-weight:700; }
 .compose-mode-tabs button.active { color:#1d1d1f; background:#fff; box-shadow:0 2px 8px #1d1d1f13; }
@@ -26,14 +29,48 @@ body:has(#compose-panel:not([hidden])) .collection-heading h2 { font-size: 25px;
   display:grid; grid-template-columns:repeat(var(--grid-count,2),minmax(0,1fr));
   gap:7px; width:100%; min-width:0;
 }
-.compose-grid-tile { display:flex; position:relative; align-items:stretch; justify-content:center; gap:4px; padding:6px; aspect-ratio:1; min-width:0; overflow:hidden; border:1px solid #dce2eb; border-radius:9px; background:#fff; cursor:pointer; }
-.compose-grid-tile:hover { border-color:var(--accent); box-shadow:0 0 0 2px #0071e318; }
-.compose-grid-tile:focus-visible { outline:3px solid var(--accent); outline-offset:2px; }
-.compose-grid-half { position:relative; display:flex; flex:1 1 0; min-width:0; overflow:hidden; align-items:center; justify-content:center; background:#f6f7f9; border-radius:5px; }
+.compose-grid-toolbar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:7px; margin-bottom:9px; font-size:11px; color:var(--secondary); }
+.compose-grid-toolbar button { border-radius:999px; padding:6px 12px; font-size:11px; }
+.compose-grid-toolbar button:disabled { opacity:.4; }
+.compose-grid-tile { display:flex; flex-direction:column; min-width:0; gap:6px; padding:7px; border:1px solid #dce2eb; border-radius:12px; background:#fff; }
+.compose-grid-tile-head { display:flex; align-items:center; justify-content:space-between; gap:6px; color:var(--secondary); font-size:10px; font-weight:700; }
+.compose-grid-reroll-pair { padding:5px 7px; border:1px solid #e1e5ed; border-radius:999px; background:#fff; color:var(--secondary); font-size:10px; cursor:pointer; }
+.compose-grid-pair-lock { padding:5px 7px; border:1px solid #e1e5ed; border-radius:999px; background:#fff; color:var(--secondary); font-size:10px; cursor:pointer; }
+.compose-grid-pair-lock[aria-pressed="true"] { color:#fff; background:#1d1d1f; }
+.compose-grid-tile-images { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px; }
+.compose-grid-image-column { display:flex; flex-direction:column; min-width:0; gap:5px; }
+.compose-grid-half { position:relative; display:flex; width:100%; aspect-ratio:1 / 2; min-width:0; overflow:hidden; align-items:center; justify-content:center; background:#f6f7f9; border-radius:7px; }
 .compose-grid-half img { display:block; width:100%; height:100%; object-fit:contain; }
 .compose-grid-tile-code { position:absolute; inset:auto 2px 2px; overflow:hidden; padding:3px 2px; border-radius:4px; background:#fffffff0; font-size:9px; font-weight:650; color:#283648; text-align:center; text-overflow:ellipsis; white-space:nowrap; }
-.compose-grid-tile-refresh { position:absolute; top:6px; right:6px; display:grid; place-items:center; width:26px; height:26px; border-radius:50%; background:#1d1d1fd9; color:white; font-size:16px; opacity:.1; }
-.compose-grid-tile:hover .compose-grid-tile-refresh,.compose-grid-tile:focus-visible .compose-grid-tile-refresh { opacity:1; }
+.compose-grid-lock { position:absolute; top:4px; right:4px; display:grid; place-items:center; width:25px; height:25px; padding:0; border:0; border-radius:50%; background:#fffD; font-size:14px; cursor:pointer; }
+.compose-grid-lock.is-locked { background:#1d1d1f; }
+.compose-grid-image-actions { display:flex; flex-wrap:wrap; justify-content:center; gap:4px; }
+.compose-grid-pill { flex:1 1 auto; min-width:0; padding:5px 7px; border:1px solid #d9dde5; border-radius:999px; background:#fff; color:#1d1d1f; font-weight:650; font-size:10px; white-space:nowrap; cursor:pointer; }
+.compose-grid-pill:first-child { color:#fff; background:#1d1d1f; border-color:#1d1d1f; }
+.compose-grid-pill:hover:not(:disabled),.compose-grid-reroll-pair:hover:not(:disabled) { border-color:#1378df; }
+.compose-grid-pill:disabled { opacity:.35; cursor:not-allowed; }
+.compose-grid-tile-foot { text-align:center; }
+.compose-grid-detail-link { border:0; background:none; color:#006bc7; padding:3px; font-size:11px; font-weight:650; cursor:pointer; }
+.compose-grid-tile button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.compose-grid-dialog { position:fixed; inset:0; z-index:90; display:grid; place-items:center; padding:14px; background:#0008; }
+.compose-grid-dialog[hidden] { display:none; }
+.compose-grid-dialog-card { width:min(780px,96vw); max-height:90vh; overflow:auto; padding:18px; border-radius:17px; background:#fff; box-shadow:0 20px 50px #0003; }
+.compose-grid-dialog-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+.compose-grid-dialog-head h3 { margin:0; font-size:16px; }
+#compose-grid-dialog-search { display:block; width:100%; padding:10px 12px; border:1px solid #d9dee7; border-radius:11px; }
+.compose-grid-dialog-items { display:grid; grid-template-columns:repeat(auto-fill,minmax(105px,1fr)); gap:9px; max-height:58vh; overflow:auto; margin-top:12px; }
+.compose-grid-picker-item { display:flex; flex-direction:column; align-items:center; min-width:0; gap:4px; padding:5px; border:1px solid #e1e6ee; border-radius:9px; background:#f8f9fa; font-size:10px; cursor:pointer; }
+.compose-grid-picker-item img { width:100%; height:130px; object-fit:contain; }
+.compose-grid-picker-item span { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.compose-grid-picker-item:disabled { opacity:.3; cursor:not-allowed; }
+#compose-grid-dialog-more { margin-top:12px; }
+.compose-grid-single-card { width:min(660px,96vw); }
+#compose-grid-single-canvas { display:block; width:100%; max-height:50vh; object-fit:contain; background:#f6f7f9; border-radius:9px; }
+.compose-grid-single-card label { display:block; margin:10px 0 6px; font-weight:650; font-size:12px; }
+#compose-grid-single-prompt { box-sizing:border-box; width:100%; min-height:112px; padding:10px; border:1px solid #dfe4ed; border-radius:9px; font-size:12px; }
+.compose-grid-single-actions { display:flex; flex-wrap:wrap; justify-content:end; gap:8px; margin-top:10px; }
+.compose-grid-single-actions button { border-radius:999px; padding:9px 14px; }
+#compose-grid-single-status { font-size:12px; color:var(--secondary); }
 .compose-grid-status { min-height:18px; margin:9px 0 0; font-size:12px; color:var(--secondary); }
 .compose-grid-gallery > .compose-grid-status { margin-top:auto; padding:9px 2px 0; }
 .compose-grid-status[data-status="error"] { color:#b42318; }
@@ -366,7 +403,11 @@ body:has(#compose-panel:not([hidden])) .collection-heading h2 { font-size: 25px;
   .compose-mode-tabs button { flex:1 1 0; padding:10px 6px; font-size:12px; }
   .compose-grid-panel { padding:10px; }
   .compose-grid-tiles { gap:4px; padding:5px; }
-  .compose-grid-tile { padding:3px; gap:2px; border-radius:6px; }
+  .compose-grid-tile { padding:4px; gap:4px; border-radius:8px; }
+  .compose-grid-tile-images { gap:3px; }
+  .compose-grid-image-actions { gap:2px; }
+  .compose-grid-pill { padding:4px 2px; font-size:9px; }
+  .compose-grid-lock { width:22px; height:22px; }
   .compose-grid-tile-code { font-size:7px; padding:2px 1px; }
   .compose-grid-controls .compose-random-primary { width:100%; }
   .compose-primary-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }

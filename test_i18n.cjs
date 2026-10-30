@@ -172,7 +172,7 @@ test("four-grid and nine-grid use unique catalog references and fixed square lay
   assert.ok(core.includes("original ? 1024 : 360"));
   assert.ok(ui.includes("usedPoses"));
   assert.ok(ui.includes("usedOutfits"));
-  assert.ok(ui.includes("pose: randomAngle"));
+  assert.ok(ui.includes("randomAngle(remainingPoses.shift())"));
   assert.ok(ui.includes("outfit:"));
   assert.match(core, /items\.flatMap\(\(\{pose, outfit\}\) => \[pose, outfit\]\)/,
     "Grid loading must include both pose and outfit for every cell");
@@ -220,7 +220,9 @@ test("four/nine grid prompts follow actual selections and have accessible copy a
     "AI prompt must stay inside the right-hand settings card, not beneath the grids");
   assert.equal((html.match(/id="compose-grid-prompt-box"/g)||[]).length, 1);
   assert.match(ui, /function updateGridPrompt\(/);
-  assert.match(ui, /gridItems\.map\(\(\{pose, outfit\}, index\)/);
+  assert.match(ui, /gridItems\.map\(\(pair, index\)/);
+  assert.match(ui, /gridPose\(pair\.pose, pair\)/);
+  assert.match(ui, /gridOutfit\(pair\)/);
   assert.match(ui, /person\.uploadUrl \? t\("composeGridPromptPersonUpload"\)/);
   assert.match(ui, /updateGridPrompt\(\);/);
   assert.match(ui, /\$\("compose-grid-copy-prompt"\)\.onclick = \(\) => copyPrompt\(true\)/);

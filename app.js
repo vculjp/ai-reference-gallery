@@ -338,16 +338,22 @@ function switchType(type) {
 function addCurrentToComposition() {
   if (!state.selected) return;
   if (state.type === "pose") {
+    if (composeUI.isReferenceLocked("pose")) return;
+    composeUI.rememberReference();
+    composeUI.clearReferencePoseOverride();
     composeUI.setReferenceType("pose");
     state.composition.pose = state.selected;
     composeUI.syncDepthToPose();
     closeImage();
     switchType("costume");
   } else if (state.type === "depth") {
+    if (composeUI.isReferenceLocked("pose")) return;
     composeUI.setDepthFromCatalog(state.selected);
     closeImage();
     switchType("compose");
   } else if (state.type === "costume") {
+    if (composeUI.isReferenceLocked("costume")) return;
+    composeUI.rememberReference();
     composeUI.releaseUploadedImage();
     state.composition.second = state.selected;
     closeImage();

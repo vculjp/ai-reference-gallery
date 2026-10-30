@@ -142,7 +142,12 @@
         </div>
         <div class="compose-grid-body">
           <div class="compose-grid-gallery">
+            <div class="compose-grid-toolbar">
+              <button type="button" class="compose-secondary" id="compose-grid-undo" disabled>↶ 撤销上一步</button>
+              <span id="compose-grid-edit-help">每张图片可独立选择、随机、上传与锁定</span>
+            </div>
             <div id="compose-grid-tiles" class="compose-grid-tiles" aria-label="随机姿势服饰搭配"></div>
+            <input type="file" id="compose-grid-image-input" accept="image/png,image/jpeg,image/webp" hidden>
             <p class="compose-grid-status" id="compose-grid-status" role="status"></p>
           </div>
           <section class="compose-grid-face-card" aria-labelledby="compose-grid-face-title">
@@ -199,6 +204,10 @@
         </div>
       </div>
       <div class="compose-workbench" id="compose-workbench">
+      <div class="compose-reference-toolbar">
+        <button id="compose-reference-undo" class="compose-secondary" type="button" disabled>↶ 撤销上一步</button>
+        <span id="compose-reference-edit-help">每项素材可以独立选择、随机、上传和锁定</span>
+      </div>
       <div class="compose-selection">
         <article class="compose-slot">
           <div class="compose-slot-head">
@@ -208,20 +217,24 @@
           <div class="compose-slot-preview" id="compose-pose-preview"><span id="compose-pose-empty">尚未选择姿势</span></div>
           <p class="compose-drawn-meta" id="compose-pose-meta"></p>
           <div class="compose-slot-actions">
+            <button type="button" class="compose-secondary compose-reference-lock" id="compose-lock-pose" aria-pressed="false">锁定姿势</button>
             <button type="button" class="compose-choose" id="compose-choose-pose">选择姿势</button>
             <button type="button" class="compose-secondary" id="compose-random-pose">随机姿势</button>
+            <button type="button" class="compose-secondary" id="compose-upload-pose">上传图片</button>
             <button type="button" class="compose-secondary" id="compose-match-depth" hidden>恢复匹配 Depth</button>
             <button type="button" class="compose-secondary" id="compose-upload-depth" hidden>上传 Depth PNG</button>
             <button type="button" class="compose-secondary" id="compose-remove-depth" hidden>清除自定义 Depth</button>
             <button type="button" class="compose-secondary" id="compose-download-depth" hidden>下载原始 Depth</button>
           </div>
           <input type="file" id="compose-depth-input" accept="image/png" hidden>
+          <input type="file" id="compose-pose-input" accept="image/png,image/jpeg,image/webp" hidden>
         </article>
         <article class="compose-slot">
           <div class="compose-slot-head"><span id="compose-costume-label">02 · 服装或图片</span><span id="compose-costume-id"></span></div>
           <div class="compose-slot-preview" id="compose-costume-preview"><span id="compose-costume-empty">尚未选择图片</span></div>
           <p class="compose-drawn-meta" id="compose-costume-meta"></p>
           <div class="compose-slot-actions">
+            <button type="button" class="compose-secondary compose-reference-lock" id="compose-lock-costume" aria-pressed="false">锁定服饰</button>
             <button type="button" class="compose-choose" id="compose-choose-costume">选择服装</button>
             <button type="button" class="compose-secondary" id="compose-random-costume">随机服装</button>
             <button type="button" class="compose-secondary" id="compose-upload">上传图片</button>
@@ -251,6 +264,7 @@
             <p id="compose-person-help">上传人物照片，帮助 AI 参考面部和人物特征；图片只在本地处理。</p>
           </div>
           <div class="compose-person-actions">
+            <button type="button" class="compose-secondary compose-reference-lock" id="compose-lock-person" aria-pressed="false">锁定人物</button>
             <button type="button" class="compose-choose" id="compose-choose-person">从脸库选择</button>
             <button type="button" class="compose-secondary" id="compose-random-person">随机人物</button>
             <button type="button" class="compose-choose" id="compose-upload-person">上传人物照片</button>
@@ -287,6 +301,33 @@
       </div>
       </div>
     </section>
+    <div id="compose-grid-dialog" class="compose-grid-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="compose-grid-dialog-title">
+      <div class="compose-grid-dialog-card">
+        <div class="compose-grid-dialog-head">
+          <h3 id="compose-grid-dialog-title">选择素材</h3>
+          <button id="compose-grid-dialog-close" class="compose-secondary" type="button">关闭</button>
+        </div>
+        <input id="compose-grid-dialog-search" type="search" placeholder="按编号、分类或关键词搜索" aria-label="搜索素材">
+        <div id="compose-grid-dialog-items" class="compose-grid-dialog-items"></div>
+        <button id="compose-grid-dialog-more" class="compose-secondary" type="button" hidden>加载更多</button>
+      </div>
+    </div>
+    <div id="compose-grid-single-dialog" class="compose-grid-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="compose-grid-single-title">
+      <div class="compose-grid-dialog-card compose-grid-single-card">
+        <div class="compose-grid-dialog-head">
+          <h3 id="compose-grid-single-title">独立参考图</h3>
+          <button id="compose-grid-single-close" class="compose-secondary" type="button">关闭</button>
+        </div>
+        <canvas id="compose-grid-single-canvas"></canvas>
+        <label for="compose-grid-single-prompt">当前格 AI 生图提示词</label>
+        <textarea id="compose-grid-single-prompt" readonly rows="5"></textarea>
+        <p id="compose-grid-single-status" role="status"></p>
+        <div class="compose-grid-single-actions">
+          <button id="compose-grid-single-copy-prompt" class="compose-secondary" type="button">复制单格提示词</button>
+          <button id="compose-grid-single-download" type="button">下载单格 PNG</button>
+        </div>
+      </div>
+    </div>
   </main>
   <div id="compose-preview-overlay" class="compose-preview-overlay" hidden>
     <div class="compose-preview-dialog" id="compose-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="compose-preview-dialog-title" tabindex="-1">
